@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime
 from typing import Any
 
 from tide_watch.models.graph_state import TideWatchState
 from tide_watch.models.ids import SourceRef
 from tide_watch.models.normalized import NormalizedDocument
+from tide_watch.models.pipeline import EvidenceItem
+
+EVIDENCE_TEXT_MAX = int(os.getenv("TIDEWATCH_EVIDENCE_TEXT_MAX", "4000"))
 
 
 def _parse_dt(raw: Any) -> datetime | None:
@@ -24,7 +28,7 @@ def _parse_dt(raw: Any) -> datetime | None:
 
 def node_normalize_batch(state: TideWatchState) -> dict[str, Any]:
     docs: list[NormalizedDocument] = []
-    evidence_items: list[dict[str, Any]] = []
+    evidence_items: list[EvidenceItem] = []
     for batch in state.get("raw_batches") or []:
         for rec in batch.records:
             text = rec.text or (rec.body_bytes.decode("utf-8", errors="ignore") if rec.body_bytes else "")
@@ -52,17 +56,17 @@ def node_normalize_batch(state: TideWatchState) -> dict[str, Any]:
             )
             docs.append(doc)
             evidence_items.append(
-                {
-                    "evidence_id": f"evi_{doc_id}",
-                    "doc_id": doc_id,
-                    "source_id": source_id,
-                    "source_trace": {
+                EvidenceItem(
+                    evidence_id=f"evi_{doc_id}",
+                    doc_id=doc_id,
+                    source_id=source_id,
+                    source_trace={
                         "provider_id": provider,
                         "external_id": rec.source_ref.external_id,
                         "discovery_channels": list(md.get("discovery_channels") or []),
                     },
-                    "text": (text or "")[:1000],
-                }
+                    text=(text or "")[:EVIDENCE_TEXT_MAX],
+                )
             )
     return {
         "normalized_docs": docs,

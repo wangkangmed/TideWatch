@@ -28,13 +28,22 @@ def test_main_graph_invoke_runs_five_layers(monkeypatch):
         "tide_watch.graph.main_graph.run_decision_support",
         lambda _state: {"decision_signals": [], "recommendation_items": [], "decision_briefs": []},
     )
+    monkeypatch.setattr(
+        "tide_watch.graph.main_graph.persist_pipeline_results",
+        lambda _state: {},
+    )
     app = compile_app()
-    out = app.invoke({"run_id": "r1", "scope": {}})
+    out = app.invoke(
+        {"run_id": "r1", "scope": {}},
+        config={"configurable": {"thread_id": "test_five_layers"}},
+    )
     assert "decision_briefs" in out
 
 
-def test_main_graph_mermaid_contains_five_layers():
-    graph = build_main_graph().compile().get_graph()
+def test_main_graph_mermaid_contains_all_nodes():
+    from langgraph.checkpoint.memory import MemorySaver
+
+    graph = build_main_graph().compile(checkpointer=MemorySaver()).get_graph()
     mermaid = graph.draw_mermaid()
     for node_name in (
         "run_sources",
@@ -42,6 +51,7 @@ def test_main_graph_mermaid_contains_five_layers():
         "run_events",
         "run_intelligence",
         "run_decision_support",
+        "persist_results",
     ):
         assert node_name in mermaid
 
@@ -74,3 +84,27 @@ def test_sources_layer_aggregates_official_social_search(monkeypatch):
     assert "official" in out["source_metadata"]
     assert "social" in out["source_metadata"]
     assert "search" in out["source_metadata"]
+
+
+def test_official_html_capability_adapter_is_invoked(monkeypatch):
+    from tide_watch.nodes.collect import node_collect_official
+
+    class _C:
+        def __init__(self, source_id: str, url: str):
+            self.source_id = source_id
+            self.url = url
+            self.company = "OpenAI"
+            self.metadata = {"transport": "html_listing"}
+            self.hint_doc_type = "listing"
+
+    monkeypatch.setattr("tide_watch.nodes.collect.load_source_config", lambda _p: object())
+    monkeypatch.setattr("tide_watch.nodes.collect.collect_official_discovery", lambda *a, **k: [_C("s1", "https://a.com/news")])
+    monkeypatch.setattr(
+        "tide_watch.nodes.collect.apply_official_html_capability",
+        lambda candidates, **kwargs: list(candidates) + [_C("s1", "https://a.com/news/item-1")],
+    )
+    import asyncio
+
+    out = asyncio.run(node_collect_official({"scope": {}}))
+    assert out["source_metadata"]["official_html_capability"] is True
+    assert out["source_metadata"]["official_candidates"] == 2

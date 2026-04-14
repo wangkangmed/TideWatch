@@ -26,11 +26,25 @@ class IngestionRepository:
                 """
                 CREATE TABLE IF NOT EXISTS normalized_documents (
                   document_id TEXT PRIMARY KEY,
+                  company TEXT,
                   source_id TEXT,
+                  source_type TEXT,
                   url TEXT,
+                  canonical_url TEXT,
                   title TEXT,
+                  published_at TEXT,
+                  updated_at TEXT,
+                  ingested_at TEXT,
+                  doc_type TEXT,
                   content_text TEXT,
+                  summary TEXT,
+                  tags TEXT,
+                  language TEXT,
+                  access_mode TEXT,
+                  fetch_status INTEGER,
+                  blocked_by TEXT,
                   quality_score REAL,
+                  content_hash TEXT,
                   raw_metadata TEXT
                 );
                 CREATE TABLE IF NOT EXISTS fetch_attempts (
@@ -50,22 +64,63 @@ class IngestionRepository:
                 );
                 """
             )
+            self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Add columns that may be missing from older schemas."""
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(normalized_documents)").fetchall()}
+        migrations = [
+            ("company", "TEXT"),
+            ("source_type", "TEXT"),
+            ("canonical_url", "TEXT"),
+            ("published_at", "TEXT"),
+            ("updated_at", "TEXT"),
+            ("ingested_at", "TEXT"),
+            ("doc_type", "TEXT"),
+            ("summary", "TEXT"),
+            ("tags", "TEXT"),
+            ("language", "TEXT"),
+            ("access_mode", "TEXT"),
+            ("fetch_status", "INTEGER"),
+            ("blocked_by", "TEXT"),
+            ("content_hash", "TEXT"),
+        ]
+        for col, col_type in migrations:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE normalized_documents ADD COLUMN {col} {col_type}")
 
     def save_doc(self, doc: FocusedNormalizedDocument) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO normalized_documents
-                (document_id, source_id, url, title, content_text, quality_score, raw_metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (document_id, company, source_id, source_type, url, canonical_url,
+                 title, published_at, updated_at, ingested_at, doc_type,
+                 content_text, summary, tags, language, access_mode,
+                 fetch_status, blocked_by, quality_score, content_hash, raw_metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc.document_id,
+                    doc.company,
                     doc.source_id,
+                    doc.source_type,
                     doc.url,
+                    doc.canonical_url,
                     doc.title,
+                    str(doc.published_at) if doc.published_at else None,
+                    str(doc.updated_at) if doc.updated_at else None,
+                    str(doc.ingested_at),
+                    doc.doc_type,
                     doc.content_text,
+                    doc.summary,
+                    json.dumps(doc.tags, ensure_ascii=False) if doc.tags else None,
+                    doc.language,
+                    doc.access_mode,
+                    doc.fetch_status,
+                    doc.blocked_by,
                     doc.quality_score,
+                    doc.content_hash,
                     json.dumps(doc.raw_metadata, ensure_ascii=False),
                 ),
             )

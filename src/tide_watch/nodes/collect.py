@@ -12,6 +12,7 @@ from tide_watch.models.graph_state import TideWatchState
 from tide_watch.models.ids import SourceRef
 from tide_watch.models.raw import RawFetchBatch, RawRecord
 from tide_watch.sources.official.config_loader import load_source_config
+from tide_watch.sources.official.enrichment.official_html_capability import apply_official_html_capability
 from tide_watch.sources.official.pipeline import collect_official_discovery
 from tide_watch.sources.search.enrichment.fetch_bridge import fetch_candidates_to_raw_batch
 from tide_watch.sources.search.pipeline import run_search_discovery
@@ -26,6 +27,12 @@ async def node_collect_official(state: TideWatchState) -> dict[str, Any]:
         cfg,
         max_candidates=int(state.get("max_candidates") or settings.focused_max_candidates),
         collection_mode=str(settings.official_collection_mode or "balanced"),
+    )
+    # Explicit official/html adapter layer: focused-style HTML expansion as internal capability.
+    candidates = apply_official_html_capability(
+        candidates,
+        source_config=cfg,
+        max_child_links=int(state.get("official_html_max_child_links") or 8),
     )
     # Keep official as discovery output in Sources phase; deep html ingestion remains internal capability.
     records = [
@@ -46,7 +53,7 @@ async def node_collect_official(state: TideWatchState) -> dict[str, Any]:
     ]
     return {
         "raw_batches": [RawFetchBatch(batch_id="official-discovery", records=records, errors=[])],
-        "source_metadata": {"official_candidates": len(candidates)},
+        "source_metadata": {"official_candidates": len(candidates), "official_html_capability": True},
     }
 
 
