@@ -26,13 +26,26 @@ from tide_watch.models.ingestion import (
     SourceHealth,
 )
 from tide_watch.models.normalized import NormalizedDocument
+from tide_watch.models.pipeline import (
+    DecisionSignal,
+    EventEvidenceLink,
+    EventItem,
+    EvidenceItem,
+    Finding,
+    RecommendationItem,
+    TrendSignal,
+)
 from tide_watch.models.raw import RawFetchBatch, RawRecord
 from tide_watch.nodes.collect import run_sources
 from tide_watch.nodes.decision_support import run_decision_support
 from tide_watch.nodes.events import run_events
 from tide_watch.nodes.intelligence import run_intelligence
-from tide_watch.nodes.normalize import build_evidence
+from tide_watch.nodes.normalize import EVIDENCE_TEXT_MAX, build_evidence
 from tide_watch.sources.official.persistence import IngestionRepository
+
+
+def _invoke_config(thread_suffix: str) -> dict[str, dict[str, str]]:
+    return {"configurable": {"thread_id": f"e2e-{thread_suffix}"}}
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +182,11 @@ class TestLayerByLayerDataFlow:
             assert doc.source_ref
 
         for evi in result["evidence_items"]:
-            assert evi["evidence_id"].startswith("evi_")
-            assert evi["doc_id"]
-            assert "source_trace" in evi
+            assert isinstance(evi, EvidenceItem)
+            assert evi.evidence_id.startswith("evi_")
+            assert evi.doc_id
+            assert hasattr(evi, "source_trace")
+            assert isinstance(evi.source_trace, dict)
 
     def test_layer2_evidence_preserves_metadata(self):
         """Evidence layer should carry forward title, URL, published_at from raw records."""
@@ -196,15 +211,17 @@ class TestLayerByLayerDataFlow:
         assert len(events_result["event_evidence_links"]) == 4
 
         for evt in events_result["events"]:
-            assert evt["event_id"].startswith("evt_")
-            assert "supporting_evidence_ids" in evt
-            assert len(evt["supporting_evidence_ids"]) == 1
+            assert isinstance(evt, EventItem)
+            assert evt.event_id.startswith("evt_")
+            assert hasattr(evt, "supporting_evidence_ids")
+            assert len(evt.supporting_evidence_ids) == 1
 
         for link in events_result["event_evidence_links"]:
-            assert "link_id" in link
-            assert "event_id" in link
-            assert "evidence_id" in link
-            assert link["support_strength"] == 0.7
+            assert isinstance(link, EventEvidenceLink)
+            assert hasattr(link, "link_id")
+            assert hasattr(link, "event_id")
+            assert hasattr(link, "evidence_id")
+            assert link.support_strength == 0.7
 
     def test_layer4_intelligence_from_events(self):
         """Intelligence layer should produce trends, findings, alerts, briefings."""
@@ -218,14 +235,23 @@ class TestLayerByLayerDataFlow:
         assert len(intel["findings"]) == 4
         assert len(intel["alerts"]) >= 1
         assert len(intel["briefing_items"]) >= 1
+        assert len(intel["briefing_items"]) <= 3
 
         for trend in intel["trends"]:
-            assert trend["trend_id"].startswith("tr_")
-            assert "supporting_event_ids" in trend
-        for finding in intel["findings"]:
-            assert finding["finding_id"].startswith("fd_")
-            assert "supporting_event_ids" in finding
-            assert "supporting_evidence_ids" in finding
+            assert isinstance(trend, TrendSignal)
+            assert trend.trend_id.startswith("tr_")
+            assert hasattr(trend, "supporting_event_ids")
+            assert trend.strength_score == 0.4
+            assert trend.corroboration_score == 0.45
+        for rank, finding in enumerate(intel["findings"]):
+            assert isinstance(finding, Finding)
+            assert finding.finding_id.startswith("fd_")
+            assert hasattr(finding, "supporting_event_ids")
+            assert hasattr(finding, "supporting_evidence_ids")
+            n = len(intel["findings"])
+            expected_importance = round(min(1.0, 0.3 + (0.7 * (1 - rank / max(n, 1)))), 3)
+            assert finding.importance_score == expected_importance
+            assert finding.decision_relevance_score == round(expected_importance * 0.9, 3)
 
     def test_layer5_decision_support_from_intelligence(self):
         """Decision support should produce signals, recommendations, briefs."""
@@ -241,15 +267,17 @@ class TestLayerByLayerDataFlow:
         assert len(decision["decision_briefs"]) >= 1
 
         for sig in decision["decision_signals"]:
-            assert sig["signal_id"].startswith("ds_")
-            assert "finding_id" in sig
-            assert "supporting_finding_ids" in sig
-            assert "supporting_event_ids" in sig
-            assert "supporting_evidence_ids" in sig
+            assert isinstance(sig, DecisionSignal)
+            assert sig.signal_id.startswith("ds_")
+            assert hasattr(sig, "finding_id")
+            assert hasattr(sig, "supporting_finding_ids")
+            assert hasattr(sig, "supporting_event_ids")
+            assert hasattr(sig, "supporting_evidence_ids")
 
         for rec in decision["recommendation_items"]:
-            assert rec["recommendation_id"].startswith("rec_")
-            assert "recommended_action" in rec
+            assert isinstance(rec, RecommendationItem)
+            assert rec.recommendation_id.startswith("rec_")
+            assert hasattr(rec, "recommended_action")
 
 
 # ===========================================================================
@@ -269,9 +297,13 @@ class TestFullGraphExecution:
                 "source_metadata": {"official": {}, "social": {}, "search": {}},
             },
         )
+        monkeypatch.setattr("tide_watch.graph.main_graph.persist_pipeline_results", lambda _s: {})
 
         app = compile_app()
-        out = app.invoke({"run_id": "e2e_test_001", "scope": {}})
+        out = app.invoke(
+            {"run_id": "e2e_test_001", "scope": {}},
+            config=_invoke_config("full-graph"),
+        )
 
         assert out.get("raw_batches") is not None
         assert len(out["raw_batches"]) == 3
@@ -300,8 +332,12 @@ class TestFullGraphExecution:
             "tide_watch.graph.main_graph.run_sources",
             lambda _s: {"raw_batches": [], "source_errors": [], "source_metadata": {}},
         )
+        monkeypatch.setattr("tide_watch.graph.main_graph.persist_pipeline_results", lambda _s: {})
         app = compile_app()
-        out = app.invoke({"run_id": "e2e_empty", "scope": {}})
+        out = app.invoke(
+            {"run_id": "e2e_empty", "scope": {}},
+            config=_invoke_config("empty"),
+        )
 
         assert out.get("normalized_docs") == []
         assert out.get("events") == []
@@ -329,53 +365,57 @@ class TestTraceability:
                 "source_metadata": {},
             },
         )
+        monkeypatch.setattr("tide_watch.graph.main_graph.persist_pipeline_results", lambda _s: {})
         app = compile_app()
-        return app.invoke({"run_id": "trace_test", "scope": {}})
+        return app.invoke(
+            {"run_id": "trace_test", "scope": {}},
+            config=_invoke_config("trace"),
+        )
 
     def test_evidence_ids_match_documents(self, full_pipeline_output):
         out = full_pipeline_output
         doc_ids = {d.doc_id for d in out["normalized_docs"]}
         for evi in out["evidence_items"]:
-            assert evi["doc_id"] in doc_ids, f"Evidence doc_id={evi['doc_id']} not in normalized_docs"
+            assert evi.doc_id in doc_ids, f"Evidence doc_id={evi.doc_id} not in normalized_docs"
 
     def test_event_evidence_links_valid(self, full_pipeline_output):
         out = full_pipeline_output
-        evi_ids = {e["evidence_id"] for e in out["evidence_items"]}
-        evt_ids = {e["event_id"] for e in out["events"]}
+        evi_ids = {e.evidence_id for e in out["evidence_items"]}
+        evt_ids = {e.event_id for e in out["events"]}
         for link in out["event_evidence_links"]:
-            assert link["event_id"] in evt_ids
-            assert link["evidence_id"] in evi_ids
+            assert link.event_id in evt_ids
+            assert link.evidence_id in evi_ids
 
     def test_findings_reference_valid_events(self, full_pipeline_output):
         out = full_pipeline_output
-        evt_ids = {e["event_id"] for e in out["events"]}
+        evt_ids = {e.event_id for e in out["events"]}
         for finding in out["findings"]:
-            for eid in finding.get("supporting_event_ids", []):
+            for eid in finding.supporting_event_ids:
                 assert eid in evt_ids, f"Finding references unknown event_id={eid}"
 
     def test_decision_signals_reference_valid_findings(self, full_pipeline_output):
         out = full_pipeline_output
-        finding_ids = {f["finding_id"] for f in out["findings"]}
+        finding_ids = {f.finding_id for f in out["findings"]}
         for sig in out["decision_signals"]:
-            assert sig["finding_id"] in finding_ids
+            assert sig.finding_id in finding_ids
 
     def test_full_chain_from_decision_to_raw(self, full_pipeline_output):
         """Walk backward from a decision_signal to the original raw record."""
         out = full_pipeline_output
         sig = out["decision_signals"][0]
 
-        finding = next(f for f in out["findings"] if f["finding_id"] == sig["finding_id"])
+        finding = next(f for f in out["findings"] if f.finding_id == sig.finding_id)
         assert finding
 
-        event_id = finding["supporting_event_ids"][0]
-        event = next(e for e in out["events"] if e["event_id"] == event_id)
+        event_id = finding.supporting_event_ids[0]
+        event = next(e for e in out["events"] if e.event_id == event_id)
         assert event
 
-        evi_id = event["supporting_evidence_ids"][0]
-        evidence = next(e for e in out["evidence_items"] if e["evidence_id"] == evi_id)
+        evi_id = event.supporting_evidence_ids[0]
+        evidence = next(e for e in out["evidence_items"] if e.evidence_id == evi_id)
         assert evidence
 
-        doc_id = evidence["doc_id"]
+        doc_id = evidence.doc_id
         doc = next(d for d in out["normalized_docs"] if d.doc_id == doc_id)
         assert doc
         assert doc.source_ref.provider_id
@@ -552,35 +592,35 @@ class TestStateReducerIssues:
         """Events layer should handle evidence items where text is empty."""
         state = {
             "evidence_items": [
-                {
-                    "evidence_id": "evi_empty",
-                    "doc_id": "doc_empty",
-                    "source_id": "test",
-                    "text": "",
-                    "source_trace": {},
-                }
+                EvidenceItem(
+                    evidence_id="evi_empty",
+                    doc_id="doc_empty",
+                    source_id="test",
+                    source_trace={},
+                    text="",
+                )
             ]
         }
         result = run_events(state)
         assert len(result["events"]) == 1
-        assert result["events"][0]["title"] == "doc_empty"
+        assert result["events"][0].title == "doc_empty"
 
     def test_intelligence_preserves_evidence_ids_from_events(self):
         """Intelligence layer should carry forward supporting_evidence_ids from events."""
         state = {
             "events": [
-                {
-                    "event_id": "evt_1",
-                    "title": "Test",
-                    "source_id": "test",
-                    "supporting_evidence_ids": ["evi_a", "evi_b"],
-                }
+                EventItem(
+                    event_id="evt_1",
+                    title="Test",
+                    source_id="test",
+                    supporting_evidence_ids=["evi_a", "evi_b"],
+                )
             ]
         }
         result = run_intelligence(state)
         finding = result["findings"][0]
-        assert "evi_a" in finding["supporting_evidence_ids"]
-        assert "evi_b" in finding["supporting_evidence_ids"]
+        assert "evi_a" in finding.supporting_evidence_ids
+        assert "evi_b" in finding.supporting_evidence_ids
 
     def test_decision_support_with_no_findings(self):
         """Decision support should handle empty findings gracefully."""
@@ -591,34 +631,17 @@ class TestStateReducerIssues:
 
 
 # ===========================================================================
-# Test 6: Persistence gap - main graph does NOT persist to SQLite
+# Test 6: Main graph persistence node + focused subgraph persist
 # ===========================================================================
 
-class TestPersistenceGap:
-    """Demonstrate that the main graph layers 2-5 do NOT persist results.
+class TestMainGraphPersistence:
+    """The main five-layer graph includes persist_results before END."""
 
-    The focused/graph.py subgraph has a _persist_documents node,
-    but the main five-layer graph (graph/main_graph.py) has no persistence.
-    """
-
-    def test_main_graph_does_not_persist_to_sqlite(self, monkeypatch, tmp_path):
-        """Run full graph and verify no data ends up in any SQLite file."""
-        monkeypatch.setattr(
-            "tide_watch.graph.main_graph.run_sources",
-            lambda _s: {
-                "raw_batches": _make_raw_batches(),
-                "source_errors": [],
-                "source_metadata": {},
-            },
-        )
-        db_path = tmp_path / "check_persist.sqlite3"
-
-        app = compile_app()
-        out = app.invoke({"run_id": "persist_check", "scope": {}})
-
-        assert len(out["normalized_docs"]) > 0
-        assert len(out["decision_signals"]) > 0
-        assert not db_path.exists(), "No SQLite file should be auto-created by the main graph"
+    def test_main_graph_includes_persist_results_node(self):
+        g = build_main_graph()
+        compiled = g.compile()
+        mermaid = compiled.get_graph().draw_mermaid()
+        assert "persist_results" in mermaid
 
     def test_focused_subgraph_has_persist_node(self):
         """Verify focused subgraph includes the persist step."""
@@ -645,8 +668,23 @@ class TestIdUniqueness:
     def test_evidence_ids_are_unique(self):
         state: TideWatchState = {"raw_batches": _make_raw_batches()}
         result = build_evidence(state)
-        evi_ids = [e["evidence_id"] for e in result["evidence_items"]]
+        evi_ids = [e.evidence_id for e in result["evidence_items"]]
         assert len(evi_ids) == len(set(evi_ids)), "Evidence IDs should be unique"
+
+    def test_evidence_text_respects_max_length(self):
+        long_text = "x" * (EVIDENCE_TEXT_MAX + 500)
+        now = datetime.now(timezone.utc)
+        rec = RawRecord(
+            source_ref=SourceRef(provider_id="test", external_id="long"),
+            fetched_at=now,
+            text=long_text,
+            metadata={"url": "https://example.com/long"},
+            idempotency_key="test:long",
+        )
+        batch = RawFetchBatch(batch_id="long-text", records=[rec], errors=[])
+        result = build_evidence({"raw_batches": [batch]})
+        evi = result["evidence_items"][0]
+        assert len(evi.text) == EVIDENCE_TEXT_MAX
 
     def test_duplicate_records_produce_different_doc_ids(self):
         """Two records with same URL but different providers should produce different doc_ids."""
