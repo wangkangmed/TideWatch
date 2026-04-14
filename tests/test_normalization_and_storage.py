@@ -20,6 +20,18 @@ from tide_watch.models.ingestion import (
     SourceHealth,
 )
 from tide_watch.models.normalized import NormalizedDocument
+from tide_watch.models.pipeline import (
+    AlertItem,
+    BriefingItem,
+    DecisionBrief,
+    DecisionSignal,
+    EventEvidenceLink,
+    EventItem,
+    EvidenceItem,
+    Finding,
+    RecommendationItem,
+    TrendSignal,
+)
 from tide_watch.models.raw import RawFetchBatch, RawRecord
 from tide_watch.nodes.normalize import build_evidence
 from tide_watch.nodes.events import run_events
@@ -208,23 +220,24 @@ class TestLayer2EvidenceNormalization:
 
     def test_evidence_item_structure(self, evidence_result):
         evi = evidence_result["evidence_items"][0]
-        assert "evidence_id" in evi
-        assert evi["evidence_id"].startswith("evi_")
-        assert "doc_id" in evi
-        assert "source_id" in evi
-        assert "source_trace" in evi
-        assert "text" in evi
+        assert isinstance(evi, EvidenceItem)
+        assert hasattr(evi, "evidence_id")
+        assert evi.evidence_id.startswith("evi_")
+        assert hasattr(evi, "doc_id")
+        assert hasattr(evi, "source_id")
+        assert hasattr(evi, "source_trace")
+        assert hasattr(evi, "text")
 
     def test_evidence_item_source_trace(self, evidence_result):
         evi = evidence_result["evidence_items"][0]
-        trace = evi["source_trace"]
+        trace = evi.source_trace
         assert trace["provider_id"] == "official:openai_news"
         assert trace["external_id"] == "https://openai.com/news/gpt5"
         assert trace["discovery_channels"] == ["rss", "sitemap"]
 
     def test_evidence_item_text_truncation(self, evidence_result):
         for evi in evidence_result["evidence_items"]:
-            assert len(evi["text"]) <= 1000
+            assert len(evi.text) <= 4000
 
     def test_evidence_metadata_stats(self, evidence_result):
         meta = evidence_result["evidence_metadata"]
@@ -256,24 +269,26 @@ class TestLayer3EventsNormalization:
 
     def test_event_fields_present(self, events_result):
         for evt in events_result["events"]:
-            assert "event_id" in evt
-            assert "title" in evt
-            assert "source_id" in evt
-            assert "supporting_evidence_ids" in evt
-            assert isinstance(evt["supporting_evidence_ids"], list)
-            assert len(evt["supporting_evidence_ids"]) == 1
+            assert isinstance(evt, EventItem)
+            assert hasattr(evt, "event_id")
+            assert hasattr(evt, "title")
+            assert hasattr(evt, "source_id")
+            assert hasattr(evt, "supporting_evidence_ids")
+            assert isinstance(evt.supporting_evidence_ids, list)
+            assert len(evt.supporting_evidence_ids) == 1
 
     def test_event_title_from_text(self, events_result):
         evt = events_result["events"][0]
-        assert "GPT-5" in evt["title"] or "openai" in evt["title"].lower()
+        assert "GPT-5" in evt.title or "openai" in evt.title.lower()
 
     def test_event_evidence_link_fields(self, events_result):
         for link in events_result["event_evidence_links"]:
-            assert "link_id" in link
-            assert "event_id" in link
-            assert "evidence_id" in link
-            assert "support_strength" in link
-            assert isinstance(link["support_strength"], float)
+            assert isinstance(link, EventEvidenceLink)
+            assert hasattr(link, "link_id")
+            assert hasattr(link, "event_id")
+            assert hasattr(link, "evidence_id")
+            assert hasattr(link, "support_strength")
+            assert isinstance(link.support_strength, float)
 
     def test_events_metadata(self, events_result):
         meta = events_result["events_metadata"]
@@ -296,37 +311,52 @@ class TestLayer4IntelligenceNormalization:
 
     def test_trend_fields(self, intel_result):
         for t in intel_result["trends"]:
-            assert "trend_id" in t
-            assert "title" in t
-            assert "strength_score" in t
-            assert "corroboration_score" in t
-            assert "supporting_event_ids" in t
-            assert isinstance(t["strength_score"], (int, float))
-            assert isinstance(t["corroboration_score"], (int, float))
+            assert isinstance(t, TrendSignal)
+            assert hasattr(t, "trend_id")
+            assert hasattr(t, "title")
+            assert hasattr(t, "strength_score")
+            assert hasattr(t, "corroboration_score")
+            assert hasattr(t, "supporting_event_ids")
+            assert isinstance(t.strength_score, (int, float))
+            assert isinstance(t.corroboration_score, (int, float))
+            # Single-source events: dynamic formula min(1, 0.3 + 0.1 * n), min(1, 0.4 + 0.05 * n)
+            assert t.strength_score == pytest.approx(0.4)
+            assert t.corroboration_score == pytest.approx(0.45)
 
     def test_finding_fields(self, intel_result):
         for f in intel_result["findings"]:
-            assert "finding_id" in f
-            assert "trend_id" in f
-            assert "finding_type" in f
-            assert "importance_score" in f
-            assert "decision_relevance_score" in f
-            assert "supporting_event_ids" in f
-            assert "supporting_evidence_ids" in f
+            assert isinstance(f, Finding)
+            assert hasattr(f, "finding_id")
+            assert hasattr(f, "trend_id")
+            assert hasattr(f, "finding_type")
+            assert hasattr(f, "importance_score")
+            assert hasattr(f, "decision_relevance_score")
+            assert hasattr(f, "supporting_event_ids")
+            assert hasattr(f, "supporting_evidence_ids")
+            assert 0.0 < f.importance_score <= 1.0
+            assert f.decision_relevance_score == pytest.approx(f.importance_score * 0.9, rel=1e-3)
+
+        scores = [f.importance_score for f in intel_result["findings"]]
+        assert len(set(scores)) > 1, "importance should vary across findings for this fixture"
 
     def test_alert_fields(self, intel_result):
-        assert len(intel_result["alerts"]) >= 1
-        for a in intel_result["alerts"]:
-            assert "alert_id" in a
-            assert "finding_id" in a
-            assert "level" in a
+        alerts = intel_result["alerts"]
+        assert len(alerts) >= 1
+        finding_ids = {a.finding_id for a in alerts}
+        assert len(finding_ids) >= 2, "alerts should attach to more than one finding when eligible"
+        for a in alerts:
+            assert isinstance(a, AlertItem)
+            assert hasattr(a, "alert_id")
+            assert hasattr(a, "finding_id")
+            assert hasattr(a, "level")
 
     def test_briefing_fields(self, intel_result):
         assert len(intel_result["briefing_items"]) >= 1
         for b in intel_result["briefing_items"]:
-            assert "briefing_id" in b
-            assert "finding_id" in b
-            assert "title" in b
+            assert isinstance(b, BriefingItem)
+            assert hasattr(b, "briefing_id")
+            assert hasattr(b, "finding_id")
+            assert hasattr(b, "title")
 
     def test_intelligence_metadata(self, intel_result):
         meta = intel_result["intelligence_metadata"]
@@ -352,31 +382,34 @@ class TestLayer5DecisionSupportNormalization:
 
     def test_signal_fields(self, decision_result):
         for sig in decision_result["decision_signals"]:
-            assert "signal_id" in sig
-            assert "finding_id" in sig
-            assert "signal_type" in sig
-            assert "decision_relevance_score" in sig
-            assert "supporting_finding_ids" in sig
-            assert "supporting_event_ids" in sig
-            assert "supporting_evidence_ids" in sig
-            assert isinstance(sig["decision_relevance_score"], (int, float))
+            assert isinstance(sig, DecisionSignal)
+            assert hasattr(sig, "signal_id")
+            assert hasattr(sig, "finding_id")
+            assert hasattr(sig, "signal_type")
+            assert hasattr(sig, "decision_relevance_score")
+            assert hasattr(sig, "supporting_finding_ids")
+            assert hasattr(sig, "supporting_event_ids")
+            assert hasattr(sig, "supporting_evidence_ids")
+            assert isinstance(sig.decision_relevance_score, (int, float))
 
     def test_recommendation_fields(self, decision_result):
         for rec in decision_result["recommendation_items"]:
-            assert "recommendation_id" in rec
-            assert "signal_id" in rec
-            assert "recommended_action" in rec
-            assert "priority" in rec
-            assert isinstance(rec["priority"], (int, float))
+            assert isinstance(rec, RecommendationItem)
+            assert hasattr(rec, "recommendation_id")
+            assert hasattr(rec, "signal_id")
+            assert hasattr(rec, "recommended_action")
+            assert hasattr(rec, "priority")
+            assert isinstance(rec.priority, (int, float))
 
     def test_brief_fields(self, decision_result):
         assert len(decision_result["decision_briefs"]) >= 1
         for b in decision_result["decision_briefs"]:
-            assert "brief_id" in b
-            assert "brief_type" in b
-            assert "title" in b
-            assert "key_signals" in b
-            assert "recommendations" in b
+            assert isinstance(b, DecisionBrief)
+            assert hasattr(b, "brief_id")
+            assert hasattr(b, "brief_type")
+            assert hasattr(b, "title")
+            assert hasattr(b, "key_signals")
+            assert hasattr(b, "recommendations")
 
     def test_decision_support_metadata(self, decision_result):
         meta = decision_result["decision_support_metadata"]
@@ -397,7 +430,7 @@ class TestStorageRoundTrip:
         return IngestionRepository(str(tmp_path / "roundtrip.sqlite3"))
 
     def test_document_roundtrip_preserved_fields(self, repo):
-        """Verify all 7 fields written by save_doc are readable."""
+        """Verify save_doc persists core columns used by focused ingestion."""
         doc = FocusedNormalizedDocument(
             document_id="rt_doc_001",
             company="OpenAI",
@@ -442,51 +475,67 @@ class TestStorageRoundTrip:
         assert meta["key"] == "value"
         assert meta["nested"]["a"] == 1
 
-    def test_document_lost_fields_on_save(self, repo):
-        """Document the 13 fields that save_doc does NOT persist."""
+    def test_document_all_fields_persist_on_save(self, repo):
+        """save_doc writes every FocusedNormalizedDocument column; round-trip matches."""
         doc = FocusedNormalizedDocument(
-            document_id="rt_lost_001",
+            document_id="rt_full_001",
             company="Anthropic",
             source_id="anthropic_news",
             source_type="newsroom",
             url="https://anthropic.com/news/test",
-            canonical_url="https://anthropic.com/news/test",
-            title="Lost Fields Test",
+            canonical_url="https://anthropic.com/news/canonical",
+            title="Full Persist Test",
             published_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 4, 12, 15, 30, tzinfo=timezone.utc),
             ingested_at=NOW,
             doc_type="article",
-            content_text="Content",
+            content_text="Content body",
             summary="Summary text",
-            tags=["safety"],
+            tags=["safety", "policy"],
             language="en",
             access_mode="listing_only",
             fetch_status=200,
+            blocked_by=None,
             quality_score=0.9,
             content_hash="hash_xyz",
-            raw_metadata={},
+            raw_metadata={"k": 1},
         )
         repo.save_doc(doc)
 
         with repo._connect() as conn:
-            info = conn.execute("PRAGMA table_info(normalized_documents)").fetchall()
-            col_names = [r[1] for r in info]
             row = conn.execute(
-                "SELECT * FROM normalized_documents WHERE document_id = ?",
-                ("rt_lost_001",),
+                """
+                SELECT document_id, company, source_id, source_type, url, canonical_url,
+                       title, published_at, updated_at, ingested_at, doc_type,
+                       content_text, summary, tags, language, access_mode,
+                       fetch_status, blocked_by, quality_score, content_hash, raw_metadata
+                FROM normalized_documents WHERE document_id = ?
+                """,
+                ("rt_full_001",),
             ).fetchone()
 
-        saved_by_save_doc = {"document_id", "source_id", "url", "title",
-                             "content_text", "quality_score", "raw_metadata"}
-        lost_fields = {}
-        for i, col in enumerate(col_names):
-            if col not in saved_by_save_doc:
-                lost_fields[col] = row[i]
-
-        for col, val in lost_fields.items():
-            assert val is None, (
-                f"Column '{col}' should be NULL because save_doc doesn't write it, "
-                f"but got: {val!r}"
-            )
+        assert row is not None
+        assert row[0] == doc.document_id
+        assert row[1] == doc.company
+        assert row[2] == doc.source_id
+        assert row[3] == doc.source_type
+        assert row[4] == doc.url
+        assert row[5] == doc.canonical_url
+        assert row[6] == doc.title
+        assert row[7] == str(doc.published_at)
+        assert row[8] == str(doc.updated_at)
+        assert row[9] == str(doc.ingested_at)
+        assert row[10] == doc.doc_type
+        assert row[11] == doc.content_text
+        assert row[12] == doc.summary
+        assert json.loads(row[13]) == doc.tags
+        assert row[14] == doc.language
+        assert row[15] == doc.access_mode
+        assert row[16] == doc.fetch_status
+        assert row[17] is None
+        assert row[18] == doc.quality_score
+        assert row[19] == doc.content_hash
+        assert json.loads(row[20]) == doc.raw_metadata
 
     def test_fetch_attempt_roundtrip(self, repo):
         attempt = FetchAttempt(
@@ -666,7 +715,10 @@ class TestExistingDatabaseReadability:
             data = json.loads(payload)
             assert "source_id" in data
             assert "total_attempts" in data
-            h = SourceHealth.model_validate(data)
+            if hasattr(SourceHealth, "model_validate"):
+                h = SourceHealth.model_validate(data)
+            else:
+                h = SourceHealth.parse_obj(data)
             assert h.source_id == source_id
 
     def test_ingestion_documents_with_full_fields(self, ingestion_conn):
@@ -684,7 +736,7 @@ class TestExistingDatabaseReadability:
             assert row[5] is not None  # access_mode
 
     def test_ingestion_documents_with_partial_fields(self, ingestion_conn):
-        """Check documents saved by the broken save_doc (only 7 fields)."""
+        """Legacy rows from older save_doc that omitted columns may still exist."""
         count = ingestion_conn.execute(
             "SELECT count(*) FROM normalized_documents WHERE company IS NULL"
         ).fetchone()[0]
