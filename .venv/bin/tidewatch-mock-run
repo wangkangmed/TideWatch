@@ -1,0 +1,6 @@
+#!/root/project/TideWatch/.venv/bin/python3
+import sys
+from tide_watch.demo.run_mock import main
+if __name__ == '__main__':
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
+    sys.exit(main())

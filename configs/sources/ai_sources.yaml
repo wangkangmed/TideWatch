@@ -1,0 +1,339 @@
+companies:
+  - company: OpenAI
+    tags: [frontier_lab, model_vendor]
+    sources:
+      - id: openai_news
+        type: newsroom
+        url: https://openai.com/news/
+        access: listing_only
+        priority: high
+        display_name: OpenAI Newsroom
+        source_strategy: protected
+        follow_detail_pages: false
+      - id: openai_research
+        type: research_news
+        url: https://openai.com/news/research/
+        access: listing_only
+        priority: high
+        display_name: OpenAI Research
+        source_strategy: protected
+        follow_detail_pages: false
+      - id: openai_product
+        type: product_news
+        url: https://openai.com/news/product-releases/
+        access: listing_only
+        priority: high
+        display_name: OpenAI Product releases
+        source_strategy: protected
+        follow_detail_pages: false
+      - id: openai_api_docs
+        type: docs
+        url: https://platform.openai.com/docs
+        access: listing_only
+        priority: medium
+
+  - company: Anthropic
+    tags: [frontier_lab, model_vendor]
+    sources:
+      - id: anthropic_news
+        type: newsroom
+        url: https://www.anthropic.com/news
+        access: listing_only
+        priority: high
+      - id: anthropic_engineering
+        type: engineering_blog
+        url: https://www.anthropic.com/engineering
+        access: listing_only
+        priority: high
+      - id: anthropic_release_notes
+        type: release_notes
+        url: https://docs.anthropic.com/en/release-notes/overview
+        access: listing_only
+        priority: high
+        source_strategy: structured_index
+        follow_detail_pages: false
+      - id: anthropic_docs
+        type: docs
+        url: https://docs.anthropic.com/
+        access: listing_only
+        priority: medium
+
+  - company: Google DeepMind
+    tags: [frontier_lab, research]
+    sources:
+      - id: deepmind_blog
+        type: research_blog
+        url: https://deepmind.google/blog/
+        access: listing_only
+        priority: high
+        listing_selectors:
+          path_contains_any:
+            - "/discover/blog"
+            - "/blog/"
+      - id: google_deepmind_blog
+        type: company_blog
+        url: https://blog.google/innovation-and-ai/models-and-research/google-deepmind/
+        access: listing_only
+        priority: medium
+      - id: google_research_blog
+        type: research_blog
+        url: https://research.google/blog/
+        access: listing_only
+        priority: medium
+
+  - company: Meta AI
+    tags: [frontier_lab, open_models]
+    sources:
+      - id: meta_ai_blog
+        type: ai_blog
+        url: https://ai.meta.com/blog/
+        access: listing_only
+        priority: high
+        source_strategy: fulltext_preferred
+        listing_selectors:
+          exclude_path_substrings:
+            - "/tag/"
+            - "/category/"
+      - id: meta_research_blog
+        type: research_blog
+        url: https://research.facebook.com/blog/
+        access: listing_only
+        priority: medium
+      - id: meta_newsroom
+        type: newsroom
+        url: https://about.fb.com/news/
+        access: listing_only
+        priority: medium
+
+  - company: Microsoft AI
+    tags: [platform, enterprise_ai]
+    sources:
+      - id: microsoft_ai_blog
+        type: ai_blog
+        url: https://www.microsoft.com/en-us/ai/blog/
+        access: listing_only
+        priority: high
+        source_strategy: fulltext_preferred
+        listing_selectors:
+          exclude_path_substrings:
+            - "/content-type/"
+            - "/topic/"
+            - "/industry/blog"
+            - "/property/"
+      - id: microsoft_ai_news
+        type: newsroom
+        url: https://microsoft.ai/news/
+        access: listing_only
+        priority: high
+      - id: microsoft_official_blog
+        type: official_blog
+        url: https://blogs.microsoft.com/
+        access: listing_only
+        priority: medium
+
+  - company: NVIDIA
+    tags: [infrastructure, chips, ai_platform]
+    sources:
+      - id: nvidia_blog
+        type: official_blog
+        url: https://blogs.nvidia.com/
+        access: listing_only
+        priority: high
+        source_strategy: fulltext_preferred
+        listing_selectors:
+          exclude_path_substrings:
+            - "/blog/category/"
+            - "/blog/page"
+      - id: nvidia_newsroom
+        type: newsroom
+        url: https://nvidianews.nvidia.com/
+        access: listing_only
+        priority: high
+      - id: nvidia_technical_blog
+        type: technical_blog
+        url: https://developer.nvidia.com/blog/
+        access: listing_only
+        priority: high
+
+  - company: xAI
+    tags: [frontier_lab, consumer_ai]
+    sources:
+      - id: xai_news
+        type: newsroom
+        url: https://x.ai/news
+        access: listing_only
+        priority: high
+        display_name: xAI News
+        source_strategy: protected
+        follow_detail_pages: false
+      - id: xai_company
+        type: company_page
+        url: https://x.ai/company
+        access: metadata_only
+        priority: low
+
+  - company: Mistral AI
+    tags: [open_weights, frontier_lab]
+    sources:
+      - id: mistral_news
+        type: newsroom
+        url: https://mistral.ai/news
+        access: listing_only
+        priority: high
+      - id: mistral_docs
+        type: docs
+        url: https://docs.mistral.ai/
+        access: listing_only
+        priority: medium
+      - id: mistral_changelog
+        type: release_notes
+        url: https://docs.mistral.ai/getting-started/changelog
+        access: listing_only
+        priority: high
+        source_strategy: structured_index
+        follow_detail_pages: false
+
+  - company: Cohere
+    tags: [enterprise_ai, retrieval]
+    sources:
+      - id: cohere_blog
+        type: blog
+        url: https://cohere.com/blog
+        access: listing_only
+        priority: high
+      - id: cohere_newsroom
+        type: newsroom
+        url: https://cohere.com/newsroom
+        access: listing_only
+        priority: medium
+      - id: cohere_changelog
+        type: release_notes
+        url: https://docs.cohere.com/changelog
+        access: listing_only
+        priority: high
+        source_strategy: structured_index
+        follow_detail_pages: false
+      - id: cohere_docs
+        type: docs
+        url: https://docs.cohere.com/docs
+        access: listing_only
+        priority: medium
+
+  - company: Hugging Face
+    tags: [open_source, community, model_hub]
+    sources:
+      - id: hf_blog
+        type: blog
+        url: https://huggingface.co/blog
+        access: listing_only
+        priority: high
+      - id: hf_changelog
+        type: changelog
+        url: https://huggingface.co/changelog
+        access: listing_only
+        priority: high
+        source_strategy: structured_index
+        follow_detail_pages: false
+      - id: hf_docs
+        type: docs
+        url: https://huggingface.co/docs
+        access: listing_only
+        priority: medium
+
+# --- Social sources（与 companies 并列；由 tide_watch.sources.social 加载） ---
+social_sources:
+  - source_id: reddit_local_llm
+    platform: reddit
+    source_type: subreddit_feed
+    handle_or_community: LocalLLaMA
+    enabled: false
+    priority: 100
+    include_comments: true
+    max_items: 15
+    metadata_fallback: true
+    trust_tier: 2
+
+  - source_id: hackernews_ai
+    platform: hackernews
+    source_type: search
+    query: ai OR llm
+    enabled: false
+    priority: 90
+    max_items: 15
+    metadata_fallback: true
+    trust_tier: 2
+
+  - source_id: hackernews_top
+    platform: hackernews
+    source_type: top_feed
+    enabled: false
+    priority: 85
+    max_items: 12
+    metadata_fallback: true
+    trust_tier: 2
+
+  - source_id: x_openai
+    platform: x
+    source_type: account_feed
+    handle_or_community: OpenAI
+    enabled: false
+    priority: 80
+    metadata_fallback: true
+    trust_tier: 2
+
+# --- Search providers / monitors（由 tide_watch.sources.search 加载） ---
+search_providers:
+  - provider_id: newsapi_main
+    provider: newsapi
+    enabled: true
+    api_key_ref: NEWSAPI_API_KEY
+    default_limit: 20
+    timeout_sec: 20
+
+  - provider_id: brave_main
+    provider: brave
+    enabled: true
+    api_key_ref: BRAVE_SEARCH_API_KEY
+    default_limit: 10
+    timeout_sec: 20
+
+  - provider_id: tavily_main
+    provider: tavily
+    enabled: false
+    api_key_ref: TAVILY_API_KEY
+    default_limit: 10
+    timeout_sec: 20
+
+  - provider_id: exa_main
+    provider: exa
+    enabled: false
+    api_key_ref: EXA_API_KEY
+    default_limit: 10
+
+  - provider_id: google_cse_main
+    provider: google_cse
+    enabled: false
+    api_key_ref: GOOGLE_CSE_API_KEY
+    default_limit: 10
+
+search_monitors:
+  - monitor_id: openai_brand
+    topic: OpenAI
+    query_templates: [brand_updates, brand_risk, product_updates]
+    enabled: true
+    providers: [newsapi_main, brave_main]
+    time_window: 7d
+    language: en
+    priority: 90
+    products: [ChatGPT, GPT-4.1, API]
+    risk_terms: [outage, lawsuit, safety, incident, policy]
+
+  - monitor_id: claude_code
+    topic: Claude Code
+    query_templates: [product_updates, product_feedback, industry_trend]
+    enabled: false
+    providers: [brave_main, tavily_main]
+    time_window: 7d
+    language: en
+    priority: 80
+    competitors: [ChatGPT, Gemini]
