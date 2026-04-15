@@ -28,12 +28,32 @@ function RecommendationsContent() {
 
       {detail && (
         <div className="card section">
-          <h2 style={{ marginBottom: 8 }}><Badge text={detail.recommended_action || "—"} /></h2>
+          <h2 style={{ marginBottom: 8 }}>
+            <Badge text={detail.display_action || detail.recommended_action || "—"} />
+          </h2>
           <ScoreBar value={detail.priority} label="Priority" />
           {detail.rationale && <p style={{ marginTop: 12 }}>{detail.rationale}</p>}
           {detail.why_now && (
             <div className="why-panel" style={{ marginTop: 12 }}>
               <strong>Why Now:</strong> {detail.why_now}
+            </div>
+          )}
+          {detail.priority_explain?.length > 0 && (
+            <div style={{ marginTop: 12, fontSize: "0.85rem", color: "var(--text-muted)" }}>
+              <strong>Priority Explain:</strong>
+              <ul style={{ marginTop: 6, paddingLeft: 20 }}>
+                {detail.priority_explain.map((item: string, idx: number) => <li key={idx}>{item}</li>)}
+              </ul>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            <span>{detail.finding_count} findings</span>
+            <span>{detail.event_count} events</span>
+            <span>{detail.evidence_count} evidence</span>
+          </div>
+          {detail.action_group && (
+            <div style={{ marginTop: 10, fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              Group: {detail.action_group.replaceAll("_", " ")}
             </div>
           )}
           {detail.related_signal && (
@@ -64,10 +84,15 @@ function RecommendationsContent() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <Link href={`/recommendations?id=${r.recommendation_id}`}>
-                  <Badge text={r.recommended_action || "—"} />
+                  <Badge text={r.display_action || r.recommended_action || "—"} />
                 </Link>
                 {r.rationale && <p style={{ marginTop: 6, fontSize: "0.9rem" }}>{r.rationale}</p>}
                 {r.why_now && <p style={{ marginTop: 4, fontSize: "0.8rem", color: "var(--text-muted)" }}>Why now: {r.why_now}</p>}
+                {r.action_group && (
+                  <p style={{ marginTop: 4, fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    Group: {r.action_group.replaceAll("_", " ")}
+                  </p>
+                )}
               </div>
               <div style={{ textAlign: "right", minWidth: 140 }}>
                 <ScoreBar value={r.priority} label="Priority" />

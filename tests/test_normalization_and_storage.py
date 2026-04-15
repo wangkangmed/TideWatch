@@ -562,6 +562,10 @@ class TestLayer5DecisionSupportNormalization:
             assert hasattr(rec, "recommended_action")
             assert hasattr(rec, "priority")
             assert isinstance(rec.priority, (int, float))
+            assert rec.display_action or rec.action_title
+            assert rec.rationale
+            assert rec.why_now
+            assert rec.metadata.get("priority_explain")
 
     def test_brief_fields(self, decision_result):
         assert len(decision_result["decision_briefs"]) >= 1
@@ -572,12 +576,108 @@ class TestLayer5DecisionSupportNormalization:
             assert hasattr(b, "title")
             assert hasattr(b, "key_signals")
             assert hasattr(b, "recommendations")
+            assert b.summary
+            assert b.narrative
+            assert b.sections
 
     def test_decision_support_metadata(self, decision_result):
         meta = decision_result["decision_support_metadata"]
         assert "signals" in meta
         assert "recommendations" in meta
         assert "briefs" in meta
+
+    def test_recommendation_consolidation_merges_similar_actions(self):
+        findings = [
+            Finding(
+                finding_id="fd_1",
+                finding_type="competition_signal",
+                display_title="Competition signal — OpenAI benchmark momentum",
+                summary="Peers are responding to OpenAI benchmark claims.",
+                decision_relevance_score=0.84,
+                importance_score=0.82,
+                supporting_event_ids=["evt_1"],
+                supporting_evidence_ids=["evi_1"],
+                metadata={"explain": ["peer comparison visible"]},
+            ),
+            Finding(
+                finding_id="fd_2",
+                finding_type="competition_signal",
+                display_title="Competition signal — Anthropic benchmark response",
+                summary="Anthropic is positioned in the same benchmark cycle.",
+                decision_relevance_score=0.77,
+                importance_score=0.74,
+                supporting_event_ids=["evt_2"],
+                supporting_evidence_ids=["evi_2"],
+                metadata={"explain": ["peer comparison visible"]},
+            ),
+            Finding(
+                finding_id="fd_3",
+                finding_type="momentum_signal",
+                display_title="Momentum signal — model release coverage rising",
+                summary="Coverage is repeating across multiple sources.",
+                decision_relevance_score=0.63,
+                importance_score=0.61,
+                supporting_event_ids=["evt_3"],
+                supporting_evidence_ids=["evi_3"],
+                metadata={"explain": ["corroboration rising"]},
+            ),
+        ]
+        result = run_decision_support({"findings": findings})
+        recs = result["recommendation_items"]
+        action_types = [r.recommended_action for r in recs]
+        assert action_types.count("track_competitor_response") == 1
+        assert action_types.count("increase_monitoring") == 1
+        comp_rec = next(r for r in recs if r.recommended_action == "track_competitor_response")
+        assert sorted(comp_rec.supporting_finding_ids) == ["fd_1", "fd_2"]
+        assert sorted(comp_rec.supporting_event_ids) == ["evt_1", "evt_2"]
+        assert comp_rec.metadata.get("priority_explain")
+
+    def test_brief_narrative_groups_findings_into_sections(self):
+        findings = [
+            Finding(
+                finding_id="fd_risk",
+                finding_type="risk_signal",
+                display_title="Risk signal — OpenAI outage",
+                summary="An outage is affecting enterprise users.",
+                decision_relevance_score=0.86,
+                importance_score=0.85,
+                supporting_event_ids=["evt_risk"],
+                supporting_evidence_ids=["evi_risk"],
+                metadata={"explain": ["risk cues: outage"]},
+            ),
+            Finding(
+                finding_id="fd_opp",
+                finding_type="opportunity_signal",
+                display_title="Opportunity signal — Anthropic partnership expansion",
+                summary="A cloud partnership could expand distribution.",
+                decision_relevance_score=0.8,
+                importance_score=0.78,
+                supporting_event_ids=["evt_opp"],
+                supporting_evidence_ids=["evi_opp"],
+                metadata={"explain": ["opportunity cues: partnership"]},
+            ),
+            Finding(
+                finding_id="fd_mom",
+                finding_type="momentum_signal",
+                display_title="Momentum signal — Cohere coverage building",
+                summary="The story is repeating across multiple sources.",
+                decision_relevance_score=0.7,
+                importance_score=0.69,
+                supporting_event_ids=["evt_mom"],
+                supporting_evidence_ids=["evi_mom"],
+                metadata={"explain": ["corroboration rising"]},
+            ),
+        ]
+        result = run_decision_support({"findings": findings})
+        briefs = result["decision_briefs"]
+        assert briefs
+        watch_brief = next(b for b in briefs if b.brief_type == "watch_brief")
+        assert watch_brief.sections
+        assert all("title" in section and "paragraph" in section for section in watch_brief.sections)
+        assert watch_brief.metadata.get("section_themes")
+        assert watch_brief.narrative
+        assert "OpenAI outage" in watch_brief.narrative or "Risk signal" in watch_brief.narrative
+        assert len(watch_brief.recommendations) <= len(result["recommendation_items"])
 
 
 # ===========================================================================

@@ -119,15 +119,33 @@ class RecommendationItem(BaseModel):
     recommendation_id: str
     signal_id: str
     recommended_action: str = "increase_monitoring"
+    action_group: str | None = None
+    action_title: str | None = None
+    display_action: str | None = None
+    summary: str | None = None
     priority: float = 0.0
+    rationale: str | None = None
+    why_now: str | None = None
+    requires_human_review: bool = False
     supporting_finding_ids: list[str] = Field(default_factory=list)
     supporting_event_ids: list[str] = Field(default_factory=list)
     supporting_evidence_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DecisionBrief(BaseModel):
     brief_id: str
     brief_type: str = "watch_brief"
     title: str = ""
+    summary: str | None = None
+    narrative: str | None = None
+    sections: list[dict[str, Any]] = Field(default_factory=list)
     key_signals: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    top_risks: list[str] = Field(default_factory=list)
+    top_opportunities: list[str] = Field(default_factory=list)
+    top_watch_items: list[str] = Field(default_factory=list)
+    supporting_finding_ids: list[str] = Field(default_factory=list)
+    supporting_event_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)

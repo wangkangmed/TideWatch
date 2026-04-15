@@ -276,7 +276,7 @@ class TestLayerByLayerDataFlow:
         decision = run_decision_support({**state, **evidence, **events, **intel})
 
         assert len(decision["decision_signals"]) == 4
-        assert len(decision["recommendation_items"]) == 4
+        assert len(decision["recommendation_items"]) <= len(decision["decision_signals"])
         assert len(decision["decision_briefs"]) >= 1
 
         for sig in decision["decision_signals"]:
@@ -291,6 +291,16 @@ class TestLayerByLayerDataFlow:
             assert isinstance(rec, RecommendationItem)
             assert rec.recommendation_id.startswith("rec_")
             assert hasattr(rec, "recommended_action")
+            assert rec.display_action or rec.action_title
+            assert rec.rationale
+            assert rec.why_now
+            assert rec.metadata.get("priority_explain")
+
+        for brief in decision["decision_briefs"]:
+            assert brief.summary
+            assert brief.narrative
+            assert brief.sections
+            assert brief.metadata.get("section_themes")
 
 
 # ===========================================================================
@@ -713,6 +723,103 @@ class TestStateReducerIssues:
         assert result["decision_signals"] == []
         assert result["recommendation_items"] == []
         assert result["decision_briefs"] == []
+
+    def test_recommendation_consolidation_merges_similar_actions(self):
+        result = run_decision_support(
+            {
+                "findings": [
+                    {
+                        "finding_id": "fd_1",
+                        "finding_type": "competition_signal",
+                        "display_title": "Competition signal — OpenAI benchmark shift",
+                        "summary": "Benchmark story moves toward OpenAI.",
+                        "decision_relevance_score": 0.78,
+                        "importance_score": 0.74,
+                        "supporting_event_ids": ["evt_1"],
+                        "supporting_evidence_ids": ["evi_1"],
+                        "metadata": {"trend_id": "tr_1"},
+                    },
+                    {
+                        "finding_id": "fd_2",
+                        "finding_type": "competition_signal",
+                        "display_title": "Competition signal — Anthropic benchmark reply",
+                        "summary": "Anthropic response is likely.",
+                        "decision_relevance_score": 0.71,
+                        "importance_score": 0.68,
+                        "supporting_event_ids": ["evt_2"],
+                        "supporting_evidence_ids": ["evi_2"],
+                        "metadata": {"trend_id": "tr_2"},
+                    },
+                    {
+                        "finding_id": "fd_3",
+                        "finding_type": "momentum_signal",
+                        "display_title": "Momentum signal — repeated rollout coverage",
+                        "summary": "Story is accelerating across sources.",
+                        "decision_relevance_score": 0.66,
+                        "importance_score": 0.63,
+                        "supporting_event_ids": ["evt_3"],
+                        "supporting_evidence_ids": ["evi_3"],
+                        "metadata": {"trend_id": "tr_3"},
+                    },
+                ]
+            }
+        )
+        recs = result["recommendation_items"]
+        actions = [rec.recommended_action for rec in recs]
+        assert actions.count("track_competitor_response") == 1
+        assert actions.count("increase_monitoring") == 1
+        competitor_rec = next(rec for rec in recs if rec.recommended_action == "track_competitor_response")
+        assert sorted(competitor_rec.supporting_finding_ids) == ["fd_1", "fd_2"]
+        assert competitor_rec.metadata.get("consolidated_signal_count") == 2
+
+    def test_brief_narrative_groups_findings_by_theme(self):
+        result = run_decision_support(
+            {
+                "findings": [
+                    {
+                        "finding_id": "fd_a",
+                        "finding_type": "risk_signal",
+                        "display_title": "Risk signal — OpenAI outage",
+                        "theme": "OpenAI risk cluster",
+                        "summary": "Outage impacts enterprise users.",
+                        "decision_relevance_score": 0.82,
+                        "importance_score": 0.8,
+                        "supporting_event_ids": ["evt_a"],
+                        "supporting_evidence_ids": ["evi_a"],
+                        "metadata": {"trend_id": "tr_a"},
+                    },
+                    {
+                        "finding_id": "fd_b",
+                        "finding_type": "risk_signal",
+                        "display_title": "Risk signal — OpenAI incident response",
+                        "theme": "OpenAI risk cluster",
+                        "summary": "Incident response remains active.",
+                        "decision_relevance_score": 0.76,
+                        "importance_score": 0.74,
+                        "supporting_event_ids": ["evt_b"],
+                        "supporting_evidence_ids": ["evi_b"],
+                        "metadata": {"trend_id": "tr_b"},
+                    },
+                    {
+                        "finding_id": "fd_c",
+                        "finding_type": "opportunity_signal",
+                        "display_title": "Opportunity signal — Anthropic partnership",
+                        "theme": "Anthropic opportunity cluster",
+                        "summary": "Partnership expands enterprise reach.",
+                        "decision_relevance_score": 0.7,
+                        "importance_score": 0.69,
+                        "supporting_event_ids": ["evt_c"],
+                        "supporting_evidence_ids": ["evi_c"],
+                        "metadata": {"trend_id": "tr_c"},
+                    },
+                ]
+            }
+        )
+        brief = result["decision_briefs"][0]
+        assert "OpenAI risk cluster" in brief.narrative or "openai risk cluster" in brief.narrative.lower()
+        assert "Anthropic opportunity cluster" in brief.narrative or "anthropic opportunity cluster" in brief.narrative.lower()
+        assert len(brief.sections) >= 2
+        assert brief.metadata.get("section_themes")
 
 
 # ===========================================================================

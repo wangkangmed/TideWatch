@@ -46,6 +46,8 @@ def get_brief(brief_id: str, run_id: str | None = None) -> dict | None:
     data = json.loads(row["brief_json"])
     return {
         **_to_summary(row),
+        "narrative": data.get("narrative"),
+        "sections": data.get("sections", []),
         "key_signals": data.get("key_signals", []),
         "recommendations": data.get("recommendations", []),
         "top_risks": data.get("top_risks", []),
@@ -101,6 +103,7 @@ def _to_summary(row: dict) -> dict:
         "brief_type": data.get("brief_type") or row.get("brief_type"),
         "title": data.get("title"),
         "summary": data.get("summary"),
+        "narrative": data.get("narrative"),
         "signal_count": len(data.get("key_signals", [])),
         "recommendation_count": len(data.get("recommendations", [])),
         "run_id": row["run_id"],
