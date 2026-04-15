@@ -39,6 +39,9 @@ export interface TrendSummary {
   trend_id: string;
   subject: string | null;
   theme: string | null;
+  title: string | null;
+  display_title: string | null;
+  summary: string | null;
   trend_type: string | null;
   direction: string | null;
   strength_score: number;
@@ -47,6 +50,10 @@ export interface TrendSummary {
   confidence: number;
   why_it_matters: string | null;
   event_count: number;
+  evidence_count: number;
+  document_count: number;
+  explain: string[];
+  merge_reasons: string[];
   run_id: string | null;
   created_at: string | null;
 }
@@ -55,6 +62,10 @@ export interface TrendDetail extends TrendSummary {
   window: Record<string, any> | null;
   event_ids: string[];
   bundle_ids: string[];
+  supporting_evidence_ids: string[];
+  supporting_document_ids: string[];
+  canonical_urls: string[];
+  related_events: Record<string, any>[];
   metadata: Record<string, any>;
 }
 
@@ -64,6 +75,7 @@ export interface FindingSummary {
   theme: string | null;
   finding_type: string | null;
   title: string | null;
+  display_title: string | null;
   summary: string | null;
   confidence: number;
   importance_score: number;
@@ -71,6 +83,8 @@ export interface FindingSummary {
   why_it_matters: string | null;
   recommended_actions: string[];
   watchlist_hits: string[];
+  topic_hits: string[];
+  explain: string[];
   event_count: number;
   evidence_count: number;
   run_id: string | null;

@@ -31,7 +31,7 @@ def list_trends(
     with get_conn() as conn:
         total = conn.execute(f"SELECT count(*) as c FROM trend_signals {where}", params).fetchone()["c"]  # noqa: S608
         rows = conn.execute(
-            f"SELECT run_id, trend_id, theme, trend_json, created_at FROM trend_signals {where} ORDER BY {order} LIMIT ? OFFSET ?",  # noqa: S608
+            f"SELECT run_id, trend_id, trend_json, created_at FROM trend_signals {where} ORDER BY {order} LIMIT ? OFFSET ?",  # noqa: S608
             (*params, page_size, (page - 1) * page_size),
         ).fetchall()
     return [_to_summary(r) for r in rows], total
@@ -45,7 +45,7 @@ def get_trend(trend_id: str, run_id: str | None = None) -> dict | None:
         params.append(run_id)
     with get_conn() as conn:
         row = conn.execute(
-            f"SELECT run_id, trend_id, theme, trend_json, created_at FROM trend_signals {where} LIMIT 1",  # noqa: S608
+            f"SELECT run_id, trend_id, trend_json, created_at FROM trend_signals {where} LIMIT 1",  # noqa: S608
             params,
         ).fetchone()
     if not row:
@@ -55,10 +55,18 @@ def get_trend(trend_id: str, run_id: str | None = None) -> dict | None:
 
 def _to_summary(row: dict) -> dict:
     data = json.loads(row["trend_json"])
+    metadata = data.get("metadata", {}) or {}
+    event_ids = data.get("event_ids") or data.get("supporting_event_ids") or []
+    evidence_ids = data.get("supporting_evidence_ids") or []
+    document_ids = data.get("supporting_document_ids") or []
+    title = data.get("display_title") or data.get("title") or data.get("theme") or row["trend_id"]
     return {
         "trend_id": row["trend_id"],
         "subject": data.get("subject"),
-        "theme": data.get("theme") or row.get("theme"),
+        "theme": data.get("theme"),
+        "title": title,
+        "display_title": title,
+        "summary": data.get("summary"),
         "trend_type": data.get("trend_type"),
         "direction": data.get("direction"),
         "strength_score": data.get("strength_score", 0),
@@ -66,7 +74,11 @@ def _to_summary(row: dict) -> dict:
         "corroboration_score": data.get("corroboration_score", 0),
         "confidence": data.get("confidence", 0),
         "why_it_matters": data.get("why_it_matters"),
-        "event_count": len(data.get("event_ids", [])),
+        "event_count": len(event_ids),
+        "evidence_count": len(evidence_ids),
+        "document_count": len(document_ids),
+        "explain": metadata.get("explain", []),
+        "merge_reasons": metadata.get("merge_reasons", []),
         "run_id": row["run_id"],
         "created_at": row["created_at"],
     }
@@ -75,10 +87,36 @@ def _to_summary(row: dict) -> dict:
 def _to_detail(row: dict) -> dict:
     data = json.loads(row["trend_json"])
     summary = _to_summary(row)
+    run_id = row["run_id"]
+    event_ids = data.get("event_ids") or data.get("supporting_event_ids") or []
+    related_events = []
+    with get_conn() as conn:
+        for event_id in event_ids[:20]:
+            event_row = conn.execute(
+                "SELECT event_json FROM events WHERE event_id = ? AND run_id = ?",
+                (event_id, run_id),
+            ).fetchone()
+            if event_row:
+                event_data = json.loads(event_row["event_json"])
+                related_events.append({
+                    "event_id": event_data.get("event_id", event_id),
+                    "canonical_title": event_data.get("canonical_title") or event_data.get("title") or event_id,
+                    "event_type": event_data.get("event_type"),
+                    "subject": event_data.get("subject"),
+                    "significance_score": event_data.get("significance_score", 0),
+                    "confidence": event_data.get("confidence", 0),
+                    "supporting_evidence_ids": event_data.get("supporting_evidence_ids", []),
+                })
     summary.update({
         "window": data.get("window"),
-        "event_ids": data.get("event_ids", []),
+        "event_ids": event_ids,
         "bundle_ids": data.get("bundle_ids", []),
+        "supporting_evidence_ids": data.get("supporting_evidence_ids", []),
+        "supporting_document_ids": data.get("supporting_document_ids", []),
+        "canonical_urls": data.get("canonical_urls", []),
+        "related_events": related_events,
+        "explain": (data.get("metadata") or {}).get("explain", []),
+        "merge_reasons": (data.get("metadata") or {}).get("merge_reasons", []),
         "metadata": data.get("metadata", {}),
     })
     return summary
@@ -100,8 +138,8 @@ def _build_where(
         clauses.append("json_extract(trend_json, '$.subject') = ?")
         params.append(subject)
     if theme:
-        clauses.append("(theme = ? OR json_extract(trend_json, '$.theme') = ?)")
-        params.extend([theme, theme])
+        clauses.append("json_extract(trend_json, '$.theme') = ?")
+        params.append(theme)
     if trend_type:
         clauses.append("json_extract(trend_json, '$.trend_type') = ?")
         params.append(trend_type)

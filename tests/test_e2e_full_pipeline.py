@@ -231,8 +231,8 @@ class TestLayerByLayerDataFlow:
 
         intel = run_intelligence({**state, **evidence, **events})
 
-        assert len(intel["trends"]) == 4
-        assert len(intel["findings"]) == 4
+        assert len(intel["trends"]) <= 4
+        assert len(intel["findings"]) == len(intel["trends"])
         assert len(intel["alerts"]) >= 1
         assert len(intel["briefing_items"]) >= 1
         assert len(intel["briefing_items"]) <= 3
@@ -241,17 +241,30 @@ class TestLayerByLayerDataFlow:
             assert isinstance(trend, TrendSignal)
             assert trend.trend_id.startswith("tr_")
             assert hasattr(trend, "supporting_event_ids")
-            assert trend.strength_score == 0.4
-            assert trend.corroboration_score == 0.45
-        for rank, finding in enumerate(intel["findings"]):
+            assert trend.display_title
+            assert trend.summary
+            assert trend.why_it_matters
+            assert trend.metadata.get("explain")
+            assert trend.strength_score > 0
+            assert trend.corroboration_score > 0
+        for finding in intel["findings"]:
             assert isinstance(finding, Finding)
             assert finding.finding_id.startswith("fd_")
             assert hasattr(finding, "supporting_event_ids")
             assert hasattr(finding, "supporting_evidence_ids")
-            n = len(intel["findings"])
-            expected_importance = round(min(1.0, 0.3 + (0.7 * (1 - rank / max(n, 1)))), 3)
-            assert finding.importance_score == expected_importance
-            assert finding.decision_relevance_score == round(expected_importance * 0.9, 3)
+            assert finding.finding_type in {
+                "risk_signal",
+                "opportunity_signal",
+                "competition_signal",
+                "adoption_signal",
+                "narrative_shift",
+                "momentum_signal",
+            }
+            assert finding.display_title
+            assert finding.summary
+            assert finding.metadata.get("explain")
+            assert 0.0 < finding.importance_score <= 1.0
+            assert 0.0 < finding.decision_relevance_score <= 1.0
 
     def test_layer5_decision_support_from_intelligence(self):
         """Decision support should produce signals, recommendations, briefs."""
@@ -621,6 +634,78 @@ class TestStateReducerIssues:
         finding = result["findings"][0]
         assert "evi_a" in finding.supporting_evidence_ids
         assert "evi_b" in finding.supporting_evidence_ids
+
+    def test_intelligence_merges_same_story_events(self):
+        """Events with overlapping evidence/docs should collapse into one trend."""
+        state = {
+            "normalized_docs": [
+                NormalizedDocument(
+                    doc_id="doc_a",
+                    source_ref=SourceRef(provider_id="official:openai", external_id="https://example.com/openai-launch"),
+                    source_id="openai_news",
+                    title="OpenAI launches enterprise rollout",
+                    canonical_url="https://example.com/openai-launch",
+                    body_text="OpenAI launches enterprise rollout with customer adoption momentum.",
+                    raw_metadata={"company": "OpenAI"},
+                ),
+                NormalizedDocument(
+                    doc_id="doc_b",
+                    source_ref=SourceRef(provider_id="search:news", external_id="https://example.com/openai-launch-analysis"),
+                    source_id="industry_news",
+                    title="Analysis: OpenAI enterprise rollout gains traction",
+                    canonical_url="https://example.com/openai-launch-analysis",
+                    body_text="Industry analysis says OpenAI rollout is gaining traction among enterprise customers.",
+                    raw_metadata={},
+                ),
+            ],
+            "evidence_items": [
+                EvidenceItem(
+                    evidence_id="evi_a",
+                    doc_id="doc_a",
+                    source_id="openai_news",
+                    source_trace={},
+                    text="OpenAI launches enterprise rollout with customer adoption momentum.",
+                ),
+                EvidenceItem(
+                    evidence_id="evi_b",
+                    doc_id="doc_b",
+                    source_id="industry_news",
+                    source_trace={},
+                    text="Industry analysis says OpenAI rollout is gaining traction among enterprise customers.",
+                ),
+            ],
+            "events": [
+                {
+                    "event_id": "evt_a",
+                    "event_type": "adoption_event",
+                    "subject": "OpenAI",
+                    "canonical_title": "OpenAI launches enterprise rollout",
+                    "significance_score": 0.74,
+                    "confidence": 0.68,
+                    "supporting_evidence_ids": ["evi_a"],
+                    "event_time": "2026-04-14T10:00:00+00:00",
+                    "metadata": {"watchlist_hits": ["ai_companies:OpenAI"], "topic_hits": ["ai_companies:model_release"]},
+                },
+                {
+                    "event_id": "evt_b",
+                    "event_type": "adoption_event",
+                    "subject": "OpenAI",
+                    "canonical_title": "OpenAI rollout gains traction with enterprise customers",
+                    "significance_score": 0.71,
+                    "confidence": 0.64,
+                    "supporting_evidence_ids": ["evi_b"],
+                    "event_time": "2026-04-14T18:00:00+00:00",
+                    "metadata": {"watchlist_hits": ["ai_companies:OpenAI"], "topic_hits": ["ai_companies:model_release"]},
+                },
+            ],
+        }
+        result = run_intelligence(state)
+        assert len(result["trends"]) == 1
+        trend = result["trends"][0]
+        assert set(trend.supporting_event_ids) == {"evt_a", "evt_b"}
+        assert trend.metadata["merge_reasons"]
+        assert trend.event_ids == ["evt_a", "evt_b"]
+        assert trend.trend_type in {"adoption_cluster", "momentum_cluster"}
 
     def test_decision_support_with_no_findings(self):
         """Decision support should handle empty findings gracefully."""

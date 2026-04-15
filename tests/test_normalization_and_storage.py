@@ -314,14 +314,23 @@ class TestLayer4IntelligenceNormalization:
             assert isinstance(t, TrendSignal)
             assert hasattr(t, "trend_id")
             assert hasattr(t, "title")
+            assert hasattr(t, "display_title")
+            assert hasattr(t, "summary")
+            assert hasattr(t, "subject")
+            assert hasattr(t, "theme")
+            assert hasattr(t, "trend_type")
             assert hasattr(t, "strength_score")
+            assert hasattr(t, "novelty_score")
             assert hasattr(t, "corroboration_score")
             assert hasattr(t, "supporting_event_ids")
             assert isinstance(t.strength_score, (int, float))
             assert isinstance(t.corroboration_score, (int, float))
-            # Single-source events: dynamic formula min(1, 0.3 + 0.1 * n), min(1, 0.4 + 0.05 * n)
-            assert t.strength_score == pytest.approx(0.4)
-            assert t.corroboration_score == pytest.approx(0.45)
+            assert 0.0 <= t.novelty_score <= 1.0
+            assert 0.0 <= t.corroboration_score <= 1.0
+            assert t.display_title
+            assert t.summary
+            assert isinstance(t.metadata, dict)
+            assert isinstance(t.metadata.get("explain", []), list)
 
     def test_finding_fields(self, intel_result):
         for f in intel_result["findings"]:
@@ -329,15 +338,168 @@ class TestLayer4IntelligenceNormalization:
             assert hasattr(f, "finding_id")
             assert hasattr(f, "trend_id")
             assert hasattr(f, "finding_type")
+            assert hasattr(f, "title")
+            assert hasattr(f, "display_title")
+            assert hasattr(f, "summary")
             assert hasattr(f, "importance_score")
             assert hasattr(f, "decision_relevance_score")
             assert hasattr(f, "supporting_event_ids")
             assert hasattr(f, "supporting_evidence_ids")
             assert 0.0 < f.importance_score <= 1.0
-            assert f.decision_relevance_score == pytest.approx(f.importance_score * 0.9, rel=1e-3)
+            assert 0.0 < f.decision_relevance_score <= 1.0
+            assert f.title
+            assert f.summary
+            assert isinstance(f.metadata, dict)
+            assert isinstance(f.metadata.get("explain", []), list)
 
         scores = [f.importance_score for f in intel_result["findings"]]
         assert len(set(scores)) > 1, "importance should vary across findings for this fixture"
+
+    def test_findings_have_routing_explain(self, intel_result):
+        for finding in intel_result["findings"]:
+            explain = finding.metadata.get("explain", [])
+            assert explain, "finding routing should provide explain text"
+
+    def test_trends_have_merge_explain(self, intel_result):
+        for trend in intel_result["trends"]:
+            explain = trend.metadata.get("explain", [])
+            assert explain, "trend output should explain grouping / significance"
+
+    def test_story_events_merge_into_single_trend(self):
+        from tide_watch.models.pipeline import EventItem
+
+        state = {
+            "events": [
+                EventItem(
+                    event_id="evt_story_1",
+                    title="OpenAI rolls out enterprise controls for ChatGPT",
+                    source_id="openai_news",
+                    supporting_evidence_ids=["evi_story_1"],
+                ),
+                {
+                    "event_id": "evt_story_2",
+                    "title": "ChatGPT enterprise controls rollout reaches API customers",
+                    "source_id": "openai_blog",
+                    "event_type": "adoption_event",
+                    "subject": "OpenAI",
+                    "event_time": "2026-04-14T12:30:00+00:00",
+                    "significance_score": 0.72,
+                    "confidence": 0.61,
+                    "supporting_evidence_ids": ["evi_story_2"],
+                    "metadata": {
+                        "topic_hits": ["ai_companies:model_release"],
+                        "summary": "Same rollout story from another source",
+                    },
+                },
+            ],
+            "evidence_items": [
+                {"evidence_id": "evi_story_1", "doc_id": "doc_story_1", "source_id": "openai_news", "text": "OpenAI launches enterprise controls."},
+                {"evidence_id": "evi_story_2", "doc_id": "doc_story_2", "source_id": "openai_blog", "text": "API customers get the same rollout."},
+            ],
+            "normalized_docs": [
+                {"doc_id": "doc_story_1", "source_id": "openai_news", "title": "OpenAI enterprise controls", "canonical_url": "https://openai.com/news/enterprise-controls", "raw_metadata": {"company": "OpenAI"}},
+                {"doc_id": "doc_story_2", "source_id": "openai_blog", "title": "ChatGPT enterprise controls rollout", "canonical_url": "https://openai.com/blog/enterprise-controls", "raw_metadata": {"company": "OpenAI"}},
+            ],
+        }
+
+        intel = run_intelligence(state)
+        assert len(intel["trends"]) == 1
+        trend = intel["trends"][0]
+        assert sorted(trend.supporting_event_ids) == ["evt_story_1", "evt_story_2"]
+        assert trend.metadata.get("merge_reasons")
+        assert trend.trend_type in {"adoption_cluster", "momentum_cluster"}
+        assert trend.summary
+
+    def test_finding_routing_distinguishes_signal_types(self):
+        scenarios = [
+            (
+                {
+                    "event_id": "evt_risk",
+                    "title": "OpenAI outage triggers enterprise incident response",
+                    "source_id": "openai_status",
+                    "event_type": "risk_event",
+                    "subject": "OpenAI",
+                    "significance_score": 0.84,
+                    "confidence": 0.7,
+                    "supporting_evidence_ids": ["evi_risk"],
+                    "metadata": {
+                        "topic_hits": ["ai_companies:risk"],
+                        "risk_keyword_hits": ["outage", "incident"],
+                    },
+                },
+                "risk_signal",
+            ),
+            (
+                {
+                    "event_id": "evt_opp",
+                    "title": "Anthropic expands cloud partnership for enterprise distribution",
+                    "source_id": "anthropic_news",
+                    "event_type": "opportunity_event",
+                    "subject": "Anthropic",
+                    "significance_score": 0.76,
+                    "confidence": 0.66,
+                    "supporting_evidence_ids": ["evi_opp"],
+                    "metadata": {
+                        "topic_hits": ["ai_companies:opportunity"],
+                        "opportunity_keyword_hits": ["partnership"],
+                    },
+                },
+                "opportunity_signal",
+            ),
+            (
+                {
+                    "event_id": "evt_comp",
+                    "title": "GPT-5 vs Claude benchmark comparison shifts leaderboard discussion",
+                    "source_id": "reddit_local_llm",
+                    "event_type": "competition_event",
+                    "subject": "OpenAI",
+                    "significance_score": 0.69,
+                    "confidence": 0.6,
+                    "supporting_evidence_ids": ["evi_comp"],
+                    "metadata": {
+                        "watchlist_hits": ["ai_companies:OpenAI", "ai_companies:Anthropic"],
+                    },
+                },
+                "competition_signal",
+            ),
+            (
+                {
+                    "event_id": "evt_adopt",
+                    "title": "Mistral launches API availability for enterprise customers",
+                    "source_id": "mistral_changelog",
+                    "event_type": "adoption_event",
+                    "subject": "Mistral",
+                    "significance_score": 0.67,
+                    "confidence": 0.61,
+                    "supporting_evidence_ids": ["evi_adopt"],
+                    "metadata": {
+                        "topic_hits": ["ai_companies:model_release"],
+                    },
+                },
+                "adoption_signal",
+            ),
+            (
+                {
+                    "event_id": "evt_narrative",
+                    "title": "Media coverage shifts toward frontier model governance",
+                    "source_id": "search_newsapi",
+                    "event_type": "research_publication",
+                    "subject": "Model governance",
+                    "significance_score": 0.58,
+                    "confidence": 0.56,
+                    "supporting_evidence_ids": ["evi_narrative"],
+                },
+                "narrative_shift",
+            ),
+        ]
+
+        for event, expected_type in scenarios:
+            state = {"events": [event], "evidence_items": [], "normalized_docs": []}
+            intel = run_intelligence(state)
+            assert len(intel["findings"]) == 1
+            finding = intel["findings"][0]
+            assert finding.finding_type == expected_type
+            assert finding.metadata.get("explain"), f"{expected_type} should include explain"
 
     def test_alert_fields(self, intel_result):
         alerts = intel_result["alerts"]

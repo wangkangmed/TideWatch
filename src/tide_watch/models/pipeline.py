@@ -49,19 +49,44 @@ class EventEvidenceLink(BaseModel):
 class TrendSignal(BaseModel):
     trend_id: str
     title: str | None = None
+    display_title: str | None = None
+    summary: str | None = None
+    subject: str | None = None
+    theme: str | None = None
+    trend_type: str | None = None
+    direction: str | None = None
     strength_score: float = 0.0
+    novelty_score: float = 0.0
     corroboration_score: float = 0.0
+    confidence: float = 0.0
     supporting_event_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    supporting_document_ids: list[str] = Field(default_factory=list)
+    canonical_urls: list[str] = Field(default_factory=list)
+    event_ids: list[str] = Field(default_factory=list)
+    window: dict[str, Any] = Field(default_factory=dict)
+    bundle_ids: list[str] = Field(default_factory=list)
+    why_it_matters: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class Finding(BaseModel):
     finding_id: str
     trend_id: str | None = None
     finding_type: str = "watch_signal"
+    title: str | None = None
+    display_title: str | None = None
+    summary: str | None = None
+    subject: str | None = None
+    theme: str | None = None
+    confidence: float = 0.0
     importance_score: float = 0.0
     decision_relevance_score: float = 0.0
     supporting_event_ids: list[str] = Field(default_factory=list)
     supporting_evidence_ids: list[str] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+    why_it_matters: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertItem(BaseModel):

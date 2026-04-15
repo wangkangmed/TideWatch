@@ -59,6 +59,8 @@ def get_finding(finding_id: str, run_id: str | None = None) -> dict | None:
         "trend_id": data.get("metadata", {}).get("trend_id") or data.get("trend_id"),
         "supporting_event_ids": data.get("supporting_event_ids", []),
         "supporting_evidence_ids": data.get("supporting_evidence_ids", []),
+        "explain": data.get("metadata", {}).get("explain", []),
+        "topic_hits": data.get("metadata", {}).get("topic_hits", []),
         "metadata": data.get("metadata", {}),
     })
 
@@ -80,16 +82,46 @@ def get_finding(finding_id: str, run_id: str | None = None) -> dict | None:
                 (eid, run),
             ).fetchone()
             if erow:
-                detail["related_events"].append(json.loads(erow["event_json"]))
+                event_data = json.loads(erow["event_json"])
+                detail["related_events"].append({
+                    "event_id": event_data.get("event_id", eid),
+                    "canonical_title": event_data.get("canonical_title") or event_data.get("title") or eid,
+                    "event_type": event_data.get("event_type"),
+                    "subject": event_data.get("subject"),
+                    "significance_score": event_data.get("significance_score", 0),
+                    "confidence": event_data.get("confidence", 0),
+                })
 
         detail["related_evidence"] = []
         for evid in detail["supporting_evidence_ids"][:10]:
             evrow = conn.execute(
-                "SELECT item_json FROM evidence_items WHERE evidence_id = ? AND run_id = ?",
+                "SELECT document_id, item_json, source_trace_json FROM evidence_items WHERE evidence_id = ? AND run_id = ?",
                 (evid, run),
             ).fetchone()
             if evrow:
-                detail["related_evidence"].append(json.loads(evrow["item_json"]))
+                evidence_data = json.loads(evrow["item_json"])
+                document = None
+                doc_id = evrow.get("document_id") or evidence_data.get("doc_id")
+                if doc_id:
+                    doc_row = conn.execute(
+                        "SELECT doc_json FROM documents WHERE document_id = ? AND run_id = ?",
+                        (doc_id, run),
+                    ).fetchone()
+                    if doc_row:
+                        document = json.loads(doc_row["doc_json"])
+                detail["related_evidence"].append({
+                    "evidence_id": evidence_data.get("evidence_id", evid),
+                    "source_id": evidence_data.get("source_id") or (document or {}).get("source_id"),
+                    "title": (document or {}).get("title"),
+                    "canonical_url": (document or {}).get("canonical_url"),
+                    "document": {
+                        "title": (document or {}).get("title"),
+                        "canonical_url": (document or {}).get("canonical_url"),
+                        "source_id": (document or {}).get("source_id"),
+                    },
+                    "snippet": (evidence_data.get("text") or "")[:240],
+                    "source_trace": json.loads(evrow["source_trace_json"]) if evrow.get("source_trace_json") else {},
+                })
 
         recs = conn.execute(
             "SELECT rec_json FROM recommendation_items r "
@@ -104,19 +136,24 @@ def get_finding(finding_id: str, run_id: str | None = None) -> dict | None:
 
 def _to_summary(row: dict) -> dict:
     data = json.loads(row["finding_json"])
+    metadata = data.get("metadata", {}) or {}
+    title = data.get("display_title") or data.get("title") or row["finding_id"]
     return {
         "finding_id": row["finding_id"],
         "subject": data.get("subject"),
         "theme": data.get("theme"),
         "finding_type": data.get("finding_type") or row.get("finding_type"),
-        "title": data.get("title"),
+        "title": title,
+        "display_title": title,
         "summary": data.get("summary"),
         "confidence": data.get("confidence", 0),
         "importance_score": data.get("importance_score", 0),
         "decision_relevance_score": data.get("decision_relevance_score", 0),
         "why_it_matters": data.get("why_it_matters"),
         "recommended_actions": data.get("recommended_actions", []),
-        "watchlist_hits": data.get("metadata", {}).get("watchlist_hits", []),
+        "watchlist_hits": metadata.get("watchlist_hits", []),
+        "topic_hits": metadata.get("topic_hits", []),
+        "explain": metadata.get("explain", []),
         "event_count": len(data.get("supporting_event_ids", [])),
         "evidence_count": len(data.get("supporting_evidence_ids", [])),
         "run_id": row["run_id"],

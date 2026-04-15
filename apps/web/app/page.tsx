@@ -53,7 +53,7 @@ export default function DashboardPage() {
               <tbody>
                 {data.top_trends.map((t: any) => (
                   <tr key={t.trend_id}>
-                    <td><Link href={`/trends?id=${t.trend_id}`}>{t.theme || t.subject || t.trend_id}</Link></td>
+                    <td><Link href={`/trends?id=${t.trend_id}`}>{t.display_title || t.title || t.theme || t.subject || t.trend_id}</Link></td>
                     <td><Badge text={t.trend_type || "—"} /></td>
                     <td><ScoreBar value={t.strength_score} /></td>
                     <td><ScoreBar value={t.novelty_score} /></td>
@@ -76,7 +76,7 @@ export default function DashboardPage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <Link href={`/findings/${f.finding_id}`} style={{ fontWeight: 600, fontSize: "1rem" }}>
-                    {f.title || f.finding_id}
+                    {f.display_title || f.title || f.finding_id}
                   </Link>
                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                     <Badge text={f.finding_type || "finding"} />
