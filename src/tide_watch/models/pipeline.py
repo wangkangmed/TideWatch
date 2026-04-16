@@ -49,19 +49,44 @@ class EventEvidenceLink(BaseModel):
 class TrendSignal(BaseModel):
     trend_id: str
     title: str | None = None
+    display_title: str | None = None
+    summary: str | None = None
+    subject: str | None = None
+    theme: str | None = None
+    trend_type: str | None = None
+    direction: str | None = None
     strength_score: float = 0.0
+    novelty_score: float = 0.0
     corroboration_score: float = 0.0
+    confidence: float = 0.0
     supporting_event_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    supporting_document_ids: list[str] = Field(default_factory=list)
+    canonical_urls: list[str] = Field(default_factory=list)
+    event_ids: list[str] = Field(default_factory=list)
+    window: dict[str, Any] = Field(default_factory=dict)
+    bundle_ids: list[str] = Field(default_factory=list)
+    why_it_matters: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class Finding(BaseModel):
     finding_id: str
     trend_id: str | None = None
     finding_type: str = "watch_signal"
+    title: str | None = None
+    display_title: str | None = None
+    summary: str | None = None
+    subject: str | None = None
+    theme: str | None = None
+    confidence: float = 0.0
     importance_score: float = 0.0
     decision_relevance_score: float = 0.0
     supporting_event_ids: list[str] = Field(default_factory=list)
     supporting_evidence_ids: list[str] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+    why_it_matters: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertItem(BaseModel):
@@ -94,15 +119,33 @@ class RecommendationItem(BaseModel):
     recommendation_id: str
     signal_id: str
     recommended_action: str = "increase_monitoring"
+    action_group: str | None = None
+    action_title: str | None = None
+    display_action: str | None = None
+    summary: str | None = None
     priority: float = 0.0
+    rationale: str | None = None
+    why_now: str | None = None
+    requires_human_review: bool = False
     supporting_finding_ids: list[str] = Field(default_factory=list)
     supporting_event_ids: list[str] = Field(default_factory=list)
     supporting_evidence_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DecisionBrief(BaseModel):
     brief_id: str
     brief_type: str = "watch_brief"
     title: str = ""
+    summary: str | None = None
+    narrative: str | None = None
+    sections: list[dict[str, Any]] = Field(default_factory=list)
     key_signals: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    top_risks: list[str] = Field(default_factory=list)
+    top_opportunities: list[str] = Field(default_factory=list)
+    top_watch_items: list[str] = Field(default_factory=list)
+    supporting_finding_ids: list[str] = Field(default_factory=list)
+    supporting_event_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)

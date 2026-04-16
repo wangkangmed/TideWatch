@@ -39,6 +39,9 @@ export interface TrendSummary {
   trend_id: string;
   subject: string | null;
   theme: string | null;
+  title: string | null;
+  display_title: string | null;
+  summary: string | null;
   trend_type: string | null;
   direction: string | null;
   strength_score: number;
@@ -47,6 +50,10 @@ export interface TrendSummary {
   confidence: number;
   why_it_matters: string | null;
   event_count: number;
+  evidence_count: number;
+  document_count: number;
+  explain: string[];
+  merge_reasons: string[];
   run_id: string | null;
   created_at: string | null;
 }
@@ -55,6 +62,10 @@ export interface TrendDetail extends TrendSummary {
   window: Record<string, any> | null;
   event_ids: string[];
   bundle_ids: string[];
+  supporting_evidence_ids: string[];
+  supporting_document_ids: string[];
+  canonical_urls: string[];
+  related_events: Record<string, any>[];
   metadata: Record<string, any>;
 }
 
@@ -64,6 +75,7 @@ export interface FindingSummary {
   theme: string | null;
   finding_type: string | null;
   title: string | null;
+  display_title: string | null;
   summary: string | null;
   confidence: number;
   importance_score: number;
@@ -71,6 +83,8 @@ export interface FindingSummary {
   why_it_matters: string | null;
   recommended_actions: string[];
   watchlist_hits: string[];
+  topic_hits: string[];
+  explain: string[];
   event_count: number;
   evidence_count: number;
   run_id: string | null;
@@ -92,9 +106,13 @@ export interface RecommendationSummary {
   recommendation_id: string;
   signal_id: string | null;
   recommended_action: string | null;
+  action_group: string | null;
+  display_action: string | null;
+  summary: string | null;
   priority: number;
   rationale: string | null;
   why_now: string | null;
+  priority_explain: string[];
   requires_human_review: boolean;
   finding_count: number;
   event_count: number;
@@ -107,6 +125,7 @@ export interface RecommendationDetail extends RecommendationSummary {
   supporting_finding_ids: string[];
   supporting_event_ids: string[];
   supporting_evidence_ids: string[];
+  key_supporting_points: string[];
   metadata: Record<string, any>;
   related_signal: Record<string, any> | null;
   related_findings: Record<string, any>[];
@@ -117,6 +136,8 @@ export interface BriefSummary {
   brief_type: string | null;
   title: string | null;
   summary: string | null;
+  narrative: string | null;
+  section_count: number;
   signal_count: number;
   recommendation_count: number;
   run_id: string | null;
@@ -129,6 +150,8 @@ export interface BriefDetail extends BriefSummary {
   top_risks: string[];
   top_opportunities: string[];
   top_watch_items: string[];
+  narrative_sections: Record<string, any>[];
+  key_themes: string[];
   supporting_finding_ids: string[];
   supporting_event_ids: string[];
   supporting_evidence_ids: string[];

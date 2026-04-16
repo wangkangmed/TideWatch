@@ -28,12 +28,13 @@ export default function FindingsPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <Link href={`/findings/${f.finding_id}`} style={{ fontWeight: 600, fontSize: "1.05rem" }}>
-                  {f.title || f.finding_id}
+                  {f.display_title || f.title || f.finding_id}
                 </Link>
                 <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                   <Badge text={f.finding_type || "finding"} />
-                  {f.theme && <Badge text={f.theme} variant="info" />}
+                  {f.subject && <Badge text={f.subject} variant="info" />}
                   {f.watchlist_hits?.length > 0 && <Badge text={`${f.watchlist_hits.length} WL hits`} variant="warning" />}
+                  {f.topic_hits?.slice(0, 2).map((hit: string) => <Badge key={hit} text={hit} variant="info" />)}
                 </div>
               </div>
               <div style={{ textAlign: "right", minWidth: 180 }}>
@@ -44,6 +45,11 @@ export default function FindingsPage() {
             </div>
             {f.summary && <p style={{ marginTop: 10, fontSize: "0.9rem", color: "var(--text-muted)" }}>{f.summary}</p>}
             <WhyItMattersPanel text={f.why_it_matters} />
+            {f.explain?.length > 0 && (
+              <ul style={{ paddingLeft: 20, marginTop: 10, fontSize: "0.85rem" }}>
+                {f.explain.slice(0, 3).map((line: string, idx: number) => <li key={idx} style={{ marginBottom: 4 }}>{line}</li>)}
+              </ul>
+            )}
             <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: "0.8rem", color: "var(--text-muted)" }}>
               <span>{f.event_count} events</span>
               <span>{f.evidence_count} evidence items</span>

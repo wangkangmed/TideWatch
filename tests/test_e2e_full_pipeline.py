@@ -231,8 +231,8 @@ class TestLayerByLayerDataFlow:
 
         intel = run_intelligence({**state, **evidence, **events})
 
-        assert len(intel["trends"]) == 4
-        assert len(intel["findings"]) == 4
+        assert len(intel["trends"]) <= 4
+        assert len(intel["findings"]) == len(intel["trends"])
         assert len(intel["alerts"]) >= 1
         assert len(intel["briefing_items"]) >= 1
         assert len(intel["briefing_items"]) <= 3
@@ -241,17 +241,30 @@ class TestLayerByLayerDataFlow:
             assert isinstance(trend, TrendSignal)
             assert trend.trend_id.startswith("tr_")
             assert hasattr(trend, "supporting_event_ids")
-            assert trend.strength_score == 0.4
-            assert trend.corroboration_score == 0.45
-        for rank, finding in enumerate(intel["findings"]):
+            assert trend.display_title
+            assert trend.summary
+            assert trend.why_it_matters
+            assert trend.metadata.get("explain")
+            assert trend.strength_score > 0
+            assert trend.corroboration_score > 0
+        for finding in intel["findings"]:
             assert isinstance(finding, Finding)
             assert finding.finding_id.startswith("fd_")
             assert hasattr(finding, "supporting_event_ids")
             assert hasattr(finding, "supporting_evidence_ids")
-            n = len(intel["findings"])
-            expected_importance = round(min(1.0, 0.3 + (0.7 * (1 - rank / max(n, 1)))), 3)
-            assert finding.importance_score == expected_importance
-            assert finding.decision_relevance_score == round(expected_importance * 0.9, 3)
+            assert finding.finding_type in {
+                "risk_signal",
+                "opportunity_signal",
+                "competition_signal",
+                "adoption_signal",
+                "narrative_shift",
+                "momentum_signal",
+            }
+            assert finding.display_title
+            assert finding.summary
+            assert finding.metadata.get("explain")
+            assert 0.0 < finding.importance_score <= 1.0
+            assert 0.0 < finding.decision_relevance_score <= 1.0
 
     def test_layer5_decision_support_from_intelligence(self):
         """Decision support should produce signals, recommendations, briefs."""
@@ -263,7 +276,7 @@ class TestLayerByLayerDataFlow:
         decision = run_decision_support({**state, **evidence, **events, **intel})
 
         assert len(decision["decision_signals"]) == 4
-        assert len(decision["recommendation_items"]) == 4
+        assert len(decision["recommendation_items"]) <= len(decision["decision_signals"])
         assert len(decision["decision_briefs"]) >= 1
 
         for sig in decision["decision_signals"]:
@@ -278,6 +291,16 @@ class TestLayerByLayerDataFlow:
             assert isinstance(rec, RecommendationItem)
             assert rec.recommendation_id.startswith("rec_")
             assert hasattr(rec, "recommended_action")
+            assert rec.display_action or rec.action_title
+            assert rec.rationale
+            assert rec.why_now
+            assert rec.metadata.get("priority_explain")
+
+        for brief in decision["decision_briefs"]:
+            assert brief.summary
+            assert brief.narrative
+            assert brief.sections
+            assert brief.metadata.get("section_themes")
 
 
 # ===========================================================================
@@ -622,12 +645,181 @@ class TestStateReducerIssues:
         assert "evi_a" in finding.supporting_evidence_ids
         assert "evi_b" in finding.supporting_evidence_ids
 
+    def test_intelligence_merges_same_story_events(self):
+        """Events with overlapping evidence/docs should collapse into one trend."""
+        state = {
+            "normalized_docs": [
+                NormalizedDocument(
+                    doc_id="doc_a",
+                    source_ref=SourceRef(provider_id="official:openai", external_id="https://example.com/openai-launch"),
+                    source_id="openai_news",
+                    title="OpenAI launches enterprise rollout",
+                    canonical_url="https://example.com/openai-launch",
+                    body_text="OpenAI launches enterprise rollout with customer adoption momentum.",
+                    raw_metadata={"company": "OpenAI"},
+                ),
+                NormalizedDocument(
+                    doc_id="doc_b",
+                    source_ref=SourceRef(provider_id="search:news", external_id="https://example.com/openai-launch-analysis"),
+                    source_id="industry_news",
+                    title="Analysis: OpenAI enterprise rollout gains traction",
+                    canonical_url="https://example.com/openai-launch-analysis",
+                    body_text="Industry analysis says OpenAI rollout is gaining traction among enterprise customers.",
+                    raw_metadata={},
+                ),
+            ],
+            "evidence_items": [
+                EvidenceItem(
+                    evidence_id="evi_a",
+                    doc_id="doc_a",
+                    source_id="openai_news",
+                    source_trace={},
+                    text="OpenAI launches enterprise rollout with customer adoption momentum.",
+                ),
+                EvidenceItem(
+                    evidence_id="evi_b",
+                    doc_id="doc_b",
+                    source_id="industry_news",
+                    source_trace={},
+                    text="Industry analysis says OpenAI rollout is gaining traction among enterprise customers.",
+                ),
+            ],
+            "events": [
+                {
+                    "event_id": "evt_a",
+                    "event_type": "adoption_event",
+                    "subject": "OpenAI",
+                    "canonical_title": "OpenAI launches enterprise rollout",
+                    "significance_score": 0.74,
+                    "confidence": 0.68,
+                    "supporting_evidence_ids": ["evi_a"],
+                    "event_time": "2026-04-14T10:00:00+00:00",
+                    "metadata": {"watchlist_hits": ["ai_companies:OpenAI"], "topic_hits": ["ai_companies:model_release"]},
+                },
+                {
+                    "event_id": "evt_b",
+                    "event_type": "adoption_event",
+                    "subject": "OpenAI",
+                    "canonical_title": "OpenAI rollout gains traction with enterprise customers",
+                    "significance_score": 0.71,
+                    "confidence": 0.64,
+                    "supporting_evidence_ids": ["evi_b"],
+                    "event_time": "2026-04-14T18:00:00+00:00",
+                    "metadata": {"watchlist_hits": ["ai_companies:OpenAI"], "topic_hits": ["ai_companies:model_release"]},
+                },
+            ],
+        }
+        result = run_intelligence(state)
+        assert len(result["trends"]) == 1
+        trend = result["trends"][0]
+        assert set(trend.supporting_event_ids) == {"evt_a", "evt_b"}
+        assert trend.metadata["merge_reasons"]
+        assert trend.event_ids == ["evt_a", "evt_b"]
+        assert trend.trend_type in {"adoption_cluster", "momentum_cluster"}
+
     def test_decision_support_with_no_findings(self):
         """Decision support should handle empty findings gracefully."""
         result = run_decision_support({"findings": []})
         assert result["decision_signals"] == []
         assert result["recommendation_items"] == []
         assert result["decision_briefs"] == []
+
+    def test_recommendation_consolidation_merges_similar_actions(self):
+        result = run_decision_support(
+            {
+                "findings": [
+                    {
+                        "finding_id": "fd_1",
+                        "finding_type": "competition_signal",
+                        "display_title": "Competition signal — OpenAI benchmark shift",
+                        "summary": "Benchmark story moves toward OpenAI.",
+                        "decision_relevance_score": 0.78,
+                        "importance_score": 0.74,
+                        "supporting_event_ids": ["evt_1"],
+                        "supporting_evidence_ids": ["evi_1"],
+                        "metadata": {"trend_id": "tr_1"},
+                    },
+                    {
+                        "finding_id": "fd_2",
+                        "finding_type": "competition_signal",
+                        "display_title": "Competition signal — Anthropic benchmark reply",
+                        "summary": "Anthropic response is likely.",
+                        "decision_relevance_score": 0.71,
+                        "importance_score": 0.68,
+                        "supporting_event_ids": ["evt_2"],
+                        "supporting_evidence_ids": ["evi_2"],
+                        "metadata": {"trend_id": "tr_2"},
+                    },
+                    {
+                        "finding_id": "fd_3",
+                        "finding_type": "momentum_signal",
+                        "display_title": "Momentum signal — repeated rollout coverage",
+                        "summary": "Story is accelerating across sources.",
+                        "decision_relevance_score": 0.66,
+                        "importance_score": 0.63,
+                        "supporting_event_ids": ["evt_3"],
+                        "supporting_evidence_ids": ["evi_3"],
+                        "metadata": {"trend_id": "tr_3"},
+                    },
+                ]
+            }
+        )
+        recs = result["recommendation_items"]
+        actions = [rec.recommended_action for rec in recs]
+        assert actions.count("track_competitor_response") == 1
+        assert actions.count("increase_monitoring") == 1
+        competitor_rec = next(rec for rec in recs if rec.recommended_action == "track_competitor_response")
+        assert sorted(competitor_rec.supporting_finding_ids) == ["fd_1", "fd_2"]
+        assert competitor_rec.metadata.get("consolidated_signal_count") == 2
+
+    def test_brief_narrative_groups_findings_by_theme(self):
+        result = run_decision_support(
+            {
+                "findings": [
+                    {
+                        "finding_id": "fd_a",
+                        "finding_type": "risk_signal",
+                        "display_title": "Risk signal — OpenAI outage",
+                        "theme": "OpenAI risk cluster",
+                        "summary": "Outage impacts enterprise users.",
+                        "decision_relevance_score": 0.82,
+                        "importance_score": 0.8,
+                        "supporting_event_ids": ["evt_a"],
+                        "supporting_evidence_ids": ["evi_a"],
+                        "metadata": {"trend_id": "tr_a"},
+                    },
+                    {
+                        "finding_id": "fd_b",
+                        "finding_type": "risk_signal",
+                        "display_title": "Risk signal — OpenAI incident response",
+                        "theme": "OpenAI risk cluster",
+                        "summary": "Incident response remains active.",
+                        "decision_relevance_score": 0.76,
+                        "importance_score": 0.74,
+                        "supporting_event_ids": ["evt_b"],
+                        "supporting_evidence_ids": ["evi_b"],
+                        "metadata": {"trend_id": "tr_b"},
+                    },
+                    {
+                        "finding_id": "fd_c",
+                        "finding_type": "opportunity_signal",
+                        "display_title": "Opportunity signal — Anthropic partnership",
+                        "theme": "Anthropic opportunity cluster",
+                        "summary": "Partnership expands enterprise reach.",
+                        "decision_relevance_score": 0.7,
+                        "importance_score": 0.69,
+                        "supporting_event_ids": ["evt_c"],
+                        "supporting_evidence_ids": ["evi_c"],
+                        "metadata": {"trend_id": "tr_c"},
+                    },
+                ]
+            }
+        )
+        brief = result["decision_briefs"][0]
+        assert "OpenAI risk cluster" in brief.narrative or "openai risk cluster" in brief.narrative.lower()
+        assert "Anthropic opportunity cluster" in brief.narrative or "anthropic opportunity cluster" in brief.narrative.lower()
+        assert len(brief.sections) >= 2
+        assert brief.metadata.get("section_themes")
 
 
 # ===========================================================================

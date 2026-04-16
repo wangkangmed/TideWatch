@@ -30,8 +30,10 @@ export default function BriefsPage() {
               <Badge text={b.brief_type || "brief"} />
               <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{b.signal_count} signals</span>
               <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{b.recommendation_count} recommendations</span>
+              {b.section_count > 0 && <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{b.section_count} sections</span>}
             </div>
             {b.summary && <p style={{ marginTop: 10, fontSize: "0.9rem" }}>{b.summary}</p>}
+            {b.narrative && <p style={{ marginTop: 8, fontSize: "0.88rem", color: "var(--text-muted)" }}>{b.narrative}</p>}
           </div>
         ))}
         {items.length === 0 && <div className="loading">No briefs available</div>}

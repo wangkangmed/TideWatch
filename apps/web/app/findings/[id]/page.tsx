@@ -19,11 +19,12 @@ export default function FindingDetailPage({ params }: { params: { id: string } }
     <>
       <div className="page-header">
         <p><Link href="/findings">&larr; Back to Findings</Link></p>
-        <h1>{data.title || data.finding_id}</h1>
+        <h1>{data.display_title || data.title || data.finding_id}</h1>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <Badge text={data.finding_type || "finding"} />
-          {data.theme && <Badge text={data.theme} variant="info" />}
+          {data.subject && <Badge text={data.subject} variant="info" />}
           {data.watchlist_hits?.length > 0 && <Badge text={`${data.watchlist_hits.length} watchlist hits`} variant="warning" />}
+          {data.topic_hits?.slice(0, 2).map((hit: string) => <Badge key={hit} text={hit} variant="info" />)}
         </div>
       </div>
 
@@ -41,6 +42,14 @@ export default function FindingDetailPage({ params }: { params: { id: string } }
 
       {data.summary && <p style={{ fontSize: "1rem", marginBottom: 16 }}>{data.summary}</p>}
       <WhyItMattersPanel text={data.why_it_matters} />
+      {data.explain?.length > 0 && (
+        <div className="section">
+          <div className="section-title">Explain</div>
+          <ul style={{ paddingLeft: 24, marginTop: 8 }}>
+            {data.explain.map((line: string, idx: number) => <li key={idx} style={{ marginBottom: 4 }}>{line}</li>)}
+          </ul>
+        </div>
+      )}
 
       {data.recommended_actions?.length > 0 && (
         <div className="section">
@@ -56,8 +65,9 @@ export default function FindingDetailPage({ params }: { params: { id: string } }
           <div className="section-title">Related Trend</div>
           <div className="card">
             <Link href={`/trends?id=${data.related_trend.trend_id}`} style={{ fontWeight: 600 }}>
-              {data.related_trend.theme || data.related_trend.trend_id}
+              {data.related_trend.display_title || data.related_trend.title || data.related_trend.theme || data.related_trend.trend_id}
             </Link>
+            {data.related_trend.summary && <p style={{ marginTop: 8, color: "var(--text-muted)" }}>{data.related_trend.summary}</p>}
             <div className="grid-3" style={{ marginTop: 12 }}>
               <ScoreBar value={data.related_trend.strength_score || 0} label="Strength" />
               <ScoreBar value={data.related_trend.novelty_score || 0} label="Novelty" />
@@ -105,15 +115,6 @@ export default function FindingDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {data.metadata && Object.keys(data.metadata).length > 0 && (
-        <div className="section">
-          <div className="section-title">Metadata</div>
-          <pre className="card" style={{ fontSize: "0.8rem", overflow: "auto", maxHeight: 300 }}>
-            {JSON.stringify(data.metadata, null, 2)}
-          </pre>
         </div>
       )}
     </>

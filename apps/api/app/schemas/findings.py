@@ -15,6 +15,7 @@ class FindingSummary(BaseModel):
     theme: str | None = None
     finding_type: str | None = None
     title: str | None = None
+    display_title: str | None = None
     summary: str | None = None
     confidence: float = 0.0
     importance_score: float = 0.0
@@ -22,6 +23,8 @@ class FindingSummary(BaseModel):
     why_it_matters: str | None = None
     recommended_actions: list[str] = Field(default_factory=list)
     watchlist_hits: list[str] = Field(default_factory=list)
+    topic_hits: list[str] = Field(default_factory=list)
+    explain: list[str] = Field(default_factory=list)
     event_count: int = 0
     evidence_count: int = 0
     run_id: str | None = None
